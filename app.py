@@ -284,16 +284,37 @@ DASHBOARD_HTML = """
             <p>📈 <strong>Pozisyon:</strong> <span style="color: #38bdf8;">{{ sig.direction }}</span></p>
             <p>🎯 <strong>Pousantaj Siksè Analiz:</strong> {{ sig.confidence }}%</p>
             <p>⏰ <strong>Lè pou Antre nan Bouji (1 minit alavans):</strong> {{ sig.entry_time }}</p>
-        </div>
+        div
         {% endfor %}
-    </div>
+    div
 </body>
 </html>
 """
+import datetime
+import threading
+import time
+
+def background_bot_loop():
+    while True:
+        kounye_a = datetime.datetime.now()
+        minit = kounye_a.minute
+        segonn = kounye_a.second
+
+        if minit % 5 == 0 and segonn == 0:
+            print(f"[{kounye_a.strftime('%H:%M:%S')}] Siyal voye pou nouvo bouji!")
+            time.sleep(2)
+
+        time.sleep(1)
+
+bot_thread = threading.Thread(target=background_bot_loop, daemon=True)
+
+bot_thread.start()
 
 if __name__ == "__main__":
-    
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
+
+
+
 
 
 
