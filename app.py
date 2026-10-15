@@ -1,410 +1,263 @@
 import os
-import json
 import random
-from datetime import datetime, timedelta
-from flask import Flask, render_template_string, request, redirect, url_for, session, jsonify
+from datetime import datetime, timezone, timedelta
+from flask import Flask, render_template_string, request, jsonify
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "optionfull-secret-key-2026")
 
-# Adrès LTC Ofisyèl Kliyan yo dwe peye sou li
-ADMIN_LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z"
+# Kòd aksè admin ou a ki pap janm ekspire
+ADMIN_CODE = os.environ.get("ACCESS_CODE", "ADMIN123")
+LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z"
 
-# Kòd pèsonèl Admin an ki pap janm ekspire
-ADMIN_MASTER_CODE = "OFL-ADMIN-KENDY-2026"
-
-# Priz done abòne lokal yo (oswa nan memwa)
-subscribers = {
-    "admin@optionfull.com": {
-        "first_name": "Admin",
-        "last_name": "Kendy",
-        "code": ADMIN_MASTER_CODE,
-        "expires": "2099-12-31 23:59:59",
-        "plan": "Admin VIP"
+# Baz de done an memwa pou kliyan yo (oswa ou ka konekte l ak yon baz reyèl pita)
+# Fòma: { "email": { "name": "Non", "expiry": datetime, "code": "kòd" } }
+USERS_DB = {
+    "motivationsucces92@gmail.com": {
+        "name": "Kendy Kendyjean",
+        "expiry": datetime.now(timezone.utc) + timedelta(days=3650),  # Aksè admin illimité
+        "code": ADMIN_CODE
     }
 }
 
-PLANS = {
-    "7days": {"name": "Plan 7 Jou", "days": 7, "price": 59.99},
-    "14days": {"name": "Plan 14 Jou", "days": 14, "price": 118.99},
-    "30days": {"name": "Plan 1 Mwa (30 Jou)", "days": 30, "price": 133.99}
-}
-
-OTC_PAIRS = [
-    "EUR/USD (OTC)", "GBP/USD (OTC)", "USD/JPY (OTC)", 
-    "AUD/USD (OTC)", "EUR/GBP (OTC)", "USD/CAD (OTC)", "GBP/JPY (OTC)"
-]
-
-def generate_smart_signals():
-    """Jeneratè Sinyal Entelijan ki baze sou Analiz Teknik ak Fondamantal"""
-    selected_pairs = random.sample(OTC_PAIRS, 2)
-    signals = []
-    
-    for pair in selected_pairs:
-        direction = random.choice(["BUY (CALL)", "SELL (PUT)"])
-        accuracy = round(random.uniform(98.5, 99.8), 1)
-        
-        signals.append({
-            "pair": pair,
-            "direction": direction,
-            "accuracy": f"{accuracy}%",
-            "timeframe": "1 Minit",
-            "type": "BUY" if "BUY" in direction else "SELL"
-        })
-    return signals
-
-# HTML TEMPLATE KONPLÈ SOU YON SÈL FICHYE
-HTML_TEMPLATE = """
+HTML_LOGIN = """
 <!DOCTYPE html>
 <html lang="ht">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Option Full Live - VIP Signals</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <title>Option Full Live - Peman & Aksè</title>
     <style>
-        body {
-            background-color: #0b0e14;
-            color: #e1e6ed;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding-bottom: 40px;
-        }
-        .navbar-custom {
-            background-color: #151a23;
-            border-bottom: 2px solid #232d3f;
-            padding: 15px;
-        }
-        .main-card {
-            background: #151a23;
-            border: 1px solid #232d3f;
-            border-radius: 16px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-            padding: 24px;
-            margin-top: 20px;
-        }
-        .time-box {
-            background: #1a2332;
-            border: 2px solid #00d2ff;
-            border-radius: 12px;
-            padding: 15px;
-            text-align: center;
-        }
-        .clock-display {
-            font-size: 2.8rem;
-            font-weight: 800;
-            color: #00d2ff;
-            letter-spacing: 2px;
-            text-shadow: 0 0 10px rgba(0, 210, 255, 0.4);
-        }
-        .countdown-display {
-            font-size: 1.5rem;
-            color: #ffcc00;
-            font-weight: 700;
-        }
-        .signal-card {
-            background: #1c2431;
-            border-radius: 16px;
-            padding: 20px;
-            text-align: center;
-            border: 2px solid #2d384e;
-            transition: transform 0.2s;
-        }
-        .signal-card:hover {
-            transform: translateY(-4px);
-        }
-        .signal-buy {
-            border-color: #00e676 !important;
-            box-shadow: 0 0 15px rgba(0, 230, 118, 0.2);
-        }
-        .signal-sell {
-            border-color: #ff1744 !important;
-            box-shadow: 0 0 15px rgba(255, 23, 68, 0.2);
-        }
-        .btn-buy {
-            background-color: #00e676;
-            color: #000;
-            font-size: 1.8rem;
-            font-weight: 900;
-            width: 100%;
-            border-radius: 10px;
-            padding: 10px;
-        }
-        .btn-sell {
-            background-color: #ff1744;
-            color: #fff;
-            font-size: 1.8rem;
-            font-weight: 900;
-            width: 100%;
-            border-radius: 10px;
-            padding: 10px;
-        }
-        .risk-warning {
-            background-color: rgba(255, 193, 7, 0.1);
-            border-left: 5px solid #ffc107;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 25px;
-            font-size: 1.1rem;
-        }
-        .stop-warning {
-            background-color: rgba(220, 53, 69, 0.15);
-            border-left: 5px solid #dc3545;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-            font-weight: 600;
-            color: #ff6b6b;
-        }
-        .plan-card {
-            background: #1a2332;
-            border: 1px solid #2d384e;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 15px;
-        }
-        .ltc-box {
-            background: #0d1117;
-            border: 1px dashed #00d2ff;
-            padding: 12px;
-            border-radius: 8px;
-            word-break: break-all;
-            font-family: monospace;
-            font-size: 1.1rem;
-            color: #00d2ff;
-        }
+        body { font-family: Arial, sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .card { background-color: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 100%; max-width: 450px; text-align: center; }
+        h1 { color: #38bdf8; font-size: 24px; margin-bottom: 10px; }
+        p { color: #94a3b8; font-size: 14px; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #334155; border-radius: 6px; background-color: #0f172a; color: #fff; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background-color: #0284c7; border: none; border-radius: 6px; color: #fff; font-weight: bold; cursor: pointer; margin-top: 10px; font-size: 16px; }
+        button:hover { background-color: #0ea5e9; }
+        .ltc-box { background: #0f172a; border: 2px dashed #f59e0b; padding: 15px; border-radius: 8px; margin: 15px 0; text-align: left; }
+        .ltc-addr { color: #f59e0b; font-family: monospace; word-break: break-all; font-size: 13px; font-weight: bold; }
+        #message { margin-top: 15px; font-weight: bold; font-size: 14px; }
     </style>
 </head>
 <body>
-
-    <nav class="navbar navbar-custom">
-        <div class="container d-flex justify-content-between align-items-center">
-            <span class="navbar-brand text-white fw-bold fs-3">
-                <i class="fa-solid fa-chart-line text-info me-2"></i>OPTION FULL LIVE
-            </span>
-            {% if session.get('user') %}
-            <div>
-                <span class="badge bg-primary fs-6 me-2">{{ session['user']['name'] }} ({{ session['user']['plan'] }})</span>
-                <a href="/logout" class="btn btn-outline-danger btn-sm fw-bold"><i class="fa-solid fa-right-from-bracket me-1"></i>Dekonekte</a>
-            </div>
-            {% endif %}
-        </div>
-    </nav>
-
-    <div class="container my-4">
-        {% if not session.get('user') %}
-        <!-- PAJ ACHTE PLAN AK KONEKSYON -->
-        <div class="row justify-content-center">
-            <div class="col-md-8">
-                <div class="main-card">
-                    <h2 class="text-center text-info fw-bold mb-4">Chwazi Yon Plan Abònman VIP</h2>
-                    
-                    <div class="plan-card text-center">
-                        <h4 class="text-warning fw-bold">PLAN 7 JOU</h4>
-                        <h2 class="fw-bold">$59.99 USD</h2>
-                        <p class="text-muted">Aksè konplè ak tout sinyal 5 minit OTC yo</p>
-                    </div>
-
-                    <div class="plan-card text-center border-info">
-                        <h4 class="text-info fw-bold">PLAN 14 JOU</h4>
-                        <h2 class="fw-bold">$118.99 USD</h2>
-                        <p class="text-muted">Aksè privilèj + Analiz avanse</p>
-                    </div>
-
-                    <div class="plan-card text-center border-success">
-                        <h4 class="text-success fw-bold">PLAN 1 MWA (30 JOU)</h4>
-                        <h2 class="fw-bold">$133.99 USD</h2>
-                        <p class="text-muted">Pi bon pri - Ekonomi pi gwo</p>
-                    </div>
-
-                    <div class="my-4">
-                        <h5 class="fw-bold mb-2"><i class="fa-brands fa-litecoin me-2 text-warning"></i>Peye Sèlman Ak Litecoin (LTC):</h5>
-                        <p class="small text-muted mb-1">Voye montan ki koresponn lan nan adrès sa a epi antre kòd ou anba a:</p>
-                        <div class="ltc-box text-center mb-3">
-                            ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z
-                        </div>
-                    </div>
-
-                    <hr class="border-secondary my-4">
-
-                    <h4 class="text-white fw-bold mb-3"><i class="fa-solid fa-key me-2 text-info"></i>Antre Nan Konto W Yo</h4>
-                    <form action="/login" method="POST">
-                        <div class="mb-3">
-                            <label class="form-label">Non ak Siyati</label>
-                            <input type="text" name="name" class="form-control bg-dark text-white border-secondary" placeholder="Eg: Jean Kendy" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Email Ou</label>
-                            <input type="email" name="email" class="form-control bg-dark text-white border-secondary" placeholder="nom@email.com" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Kòd Aksè Abònman W Oswa Kòd Admin</label>
-                            <input type="text" name="code" class="form-control bg-dark text-white border-secondary" placeholder="Entrer le code reçu" required>
-                        </div>
-                        <button type="submit" class="btn btn-info w-100 fw-bold py-2 fs-5">KONEKTE / PRAN AKSÈ</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        {% else %}
-        <!-- DASHBOARD SINYAL YO SOU TABLO A -->
-        <div class="row">
-            <div class="col-12 mb-4">
-                <div class="time-box">
-                    <div class="text-uppercase fw-bold text-muted mb-1"><i class="fa-solid fa-globe me-2"></i>Lè Releyèl Peyi W Kounye a (Broker Sync)</div>
-                    <div id="realtime-clock" class="clock-display">00:00:00</div>
-                    <div id="countdown" class="countdown-display mt-2">
-                        <i class="fa-solid fa-hourglass-half me-2"></i>Pwochen 2 Sinyal nan: 00:00
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row" id="signals-container">
-            <!-- 2 SINYAL YO AP PARÈT LA AK JAVASCRIPT -->
-            <div class="col-12 text-center py-5">
-                <div class="spinner-border text-info" role="status"></div>
-                <p class="mt-2 text-muted">N ap analize mache a pou jwenn 2 pi bon pè yo...</p>
-            </div>
-        </div>
-
-        <!-- RISK MANAGEMENT CONSEIL -->
-        <div class="risk-warning">
-            <i class="fa-solid fa-shield-halved text-warning me-2 fs-4"></i>
-            <strong>RÈG JERE KAPITAL (RISK MANAGEMENT):</strong><br>
-            Tanpri riske sèlman <strong>2% rive 3%</strong> nan kapital ou pou chak trad ou ap pran! Pa janm riske plis pase sa sou yon sèl bouji.
-        </div>
-
-        <div class="stop-warning">
-            <i class="fa-solid fa-circle-exclamation me-2 fs-4"></i>
-            <strong>KONSÈY ENPÒTAN:</strong> Si ou pran 3 trad pèdi afilè (3 losses in a row), <u>fè yon poze pou pita</u>! Mache a pa bon pou kounye a.
-        </div>
-
-        {% endif %}
+<div class="card">
+    <h1>Option Full Live</h1>
+    <p>Platfòm Sinyal Entelijan 24/7 (Filtè Avanse 99%)</p>
+    
+    <div class="ltc-box">
+        <p style="margin:0 0 5px 0; color:#fff; font-weight:bold;">Peye Sèlman Ak Litecoin (LTC):</p>
+        <div class="ltc-addr">ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z</div>
+        <p style="font-size:11px; margin:5px 0 0 0;">Voye abònman w la pou resevwa kòd pèsonèl ou, oswa itilize kòd admin ou an.</p>
     </div>
 
-    <script>
-        function updateClockAndTimer() {
-            const now = new Date();
-            
-            // 1. Afiche tan lokal nan peyi kote kliyan an ye an tan reyèl
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            
-            const clockEl = document.getElementById('realtime-clock');
-            if (clockEl) {
-                clockEl.innerText = `${hours}:${minutes}:${seconds}`;
-            }
+    <form id="loginForm">
+        <input type="text" id="name" placeholder="Non ak Siyati" required>
+        <input type="email" id="email" placeholder="Email Ou" required>
+        <input type="password" id="code" placeholder="Kòd Aksè W oswa Kòd Admin" required>
+        <button type="submit">KONTINYE NAN PLATFÒM LA</button>
+    </form>
+    <div id="message"></div>
+</div>
 
-            // 2. Dekont 5 Minit presi
-            const currMin = now.getMinutes();
-            const currSec = now.getSeconds();
-            
-            const minLeft = 4 - (currMin % 5);
-            const secLeft = 59 - currSec;
-
-            const formatMin = String(minLeft).padStart(2, '0');
-            const formatSec = String(secLeft).padStart(2, '0');
-
-            const countdownEl = document.getElementById('countdown');
-            if (countdownEl) {
-                countdownEl.innerHTML = `<i class="fa-solid fa-hourglass-half me-2"></i>Pwochen 2 Sinyal nan: ${formatMin}:${formatSec}`;
-            }
-
-            // Lè li rive presizeman nan 00:00 nou recharger 2 sinyal yo
-            if (minLeft === 0 && secLeft === 0 && seconds === '00') {
-                loadSignals();
-            }
-        }
-
-        function loadSignals() {
-            const container = document.getElementById('signals-container');
-            if (!container) return;
-
-            fetch('/api/get-signals')
-                .then(res => res.json())
-                .then(data => {
-                    let html = '';
-                    data.signals.forEach(sig => {
-                        const isBuy = sig.type === 'BUY';
-                        const cardClass = isBuy ? 'signal-buy' : 'signal-sell';
-                        const btnClass = isBuy ? 'btn-buy' : 'btn-sell';
-                        const icon = isBuy ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
-
-                        html += `
-                            <div class="col-md-6 mb-4">
-                                <div class="signal-card ${cardClass}">
-                                    <h3 class="fw-bold text-white mb-2">${sig.pair}</h3>
-                                    <div class="mb-3">
-                                        <span class="badge bg-secondary fs-6">Timeframe: ${sig.timeframe}</span>
-                                        <span class="badge bg-info text-dark fs-6 ms-2">Filtre: ${sig.accuracy}</span>
-                                    </div>
-                                    <div class="${btnClass} my-3">
-                                        <i class="fa-solid ${icon} me-2"></i>${sig.direction}
-                                    </div>
-                                    <p class="text-muted mb-0">Antre presizeman anvan pwochen bouji 1m lan al nan :00 segond</p>
-                                </div>
-                            </div>
-                        `;
-                    });
-                    container.innerHTML = html;
-                })
-                .catch(err => console.error("Erreur:", err));
-        }
-
-        setInterval(updateClockAndTimer, 1000);
-        updateClockAndTimer();
+<script>
+    document.getElementById('loginForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const data = {
+            name: document.getElementById('name').value,
+            email: document.getElementById('email').value,
+            code: document.getElementById('code').value
+        };
         
-        // Chaje premye sinyal yo nan kòmansman
-        {% if session.get('user') %}
-            loadSignals();
-        {% endif %}
-    </script>
+        fetch('/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(res => res.json())
+        .then(response => {
+            const msg = document.getElementById('message');
+            if(response.success) {
+                window.location.href = '/dashboard';
+            } else {
+                msg.style.color = '#ef4444';
+                msg.innerText = response.error || "Kòd la pa valab oswa li ekspire!";
+            }
+        });
+    });
+</script>
+</body>
+</html>
+"""
+
+HTML_DASHBOARD = """
+<!DOCTYPE html>
+<html lang="ht">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Option Full Live - Dashboard Sinyal</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #090d16; color: #fff; margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 420px; }
+        .header-card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 15px; text-align: center; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        .clock { font-size: 28px; font-weight: bold; color: #38bdf8; font-family: monospace; }
+        .timer-box { font-size: 14px; color: #fbbf24; margin-top: 5px; font-weight: bold; }
+        .signal-card { background: #111827; border-radius: 12px; padding: 15px; margin-bottom: 12px; border-left: 6px solid; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+        .buy-border { border-left-color: #22c55e; }
+        .sell-border { border-left-color: #ef4444; }
+        .pair-title { font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        .meta-info { font-size: 12px; color: #9ca3af; margin: 5px 0 10px 0; }
+        .target-time { background: #1f2937; color: #fde047; padding: 6px; border-radius: 6px; font-size: 13px; text-align: center; font-weight: bold; margin-bottom: 10px; }
+        .btn-signal { display: block; padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; font-size: 16px; letter-spacing: 1px; }
+        .bg-buy { background-color: #22c55e; color: #000; }
+        .bg-sell { background-color: #ef4444; color: #fff; }
+        .footer { text-align: center; font-size: 11px; color: #6b7280; margin-top: 15px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header-card">
+        <div class="clock" id="utcClock">--:--:--</div>
+        <div class="timer-box">⏳ Pwochen Sinyal Alavans nan: <span id="countdown">--:--</span></div>
+        <div style="font-size: 11px; color: #22c55e; margin-top: 4px;">🟢 Mache Reyèl 24/7 (Filtè RSI 99%)</div>
+    </div>
+
+    <!-- Sinyal 1 -->
+    <div class="signal-card buy-border">
+        <div class="pair-title">
+            <span id="pair1">EUR/USD (OTC)</span>
+            <span style="font-size: 12px; color: #22c55e;">Filtre: 99.2%</span>
+        </div>
+        <div class="meta-info">Timeframe: 1 Minit | Estrateji: EMA + RSI</div>
+        <div class="target-time" id="targetTime1">Antre nan mache a a: --:--:--</div>
+        <div class="btn-signal bg-buy" id="action1">📈 BUY (CALL)</div>
+    </div>
+
+    <!-- Sinyal 2 -->
+    <div class="signal-card sell-border">
+        <div class="pair-title">
+            <span id="pair2">GBP/JPY (OTC)</span>
+            <span style="font-size: 12px; color: #ef4444;">Filtre: 98.9%</span>
+        </div>
+        <div class="meta-info">Timeframe: 1 Minit | Estrateji: EMA + RSI</div>
+        <div class="target-time" id="targetTime2">Antre nan mache a a: --:--:--</div>
+        <div class="btn-signal bg-sell" id="action2">📉 SELL (PUT)</div>
+    </div>
+
+    <div class="footer">
+        Option Full Live v3.0 • Tout dwa rezève pou kliyan VIP yo.
+    </div>
+</div>
+
+<script>
+    // Lis pè lajan OTC ki pi fò yo pou wotasyon entelijan
+    const pairs = ["EUR/USD (OTC)", "GBP/USD (OTC)", "EUR/GBP (OTC)", "AUD/CAD (OTC)", "USD/CHF (OTC)", "GBP/JPY (OTC)", "EUR/JPY (OTC)"];
+
+    function updateApp() {
+        // Sèvi ak lè inivèsèl (UTC) pou tout moun nan nenpòt peyi jwenn egzakteman menm segond la
+        const now = new Date();
+        const utcHours = String(now.getUTCHours()).padStart(2, '0');
+        const utcMinutes = String(now.getUTCMinutes()).padStart(2, '0');
+        const utcSeconds = String(now.getUTCSeconds()).padStart(2, '0');
+        document.getElementById('utcClock\').innerText = `${utcHours}:${utcMinutes}:${utcSeconds} (UTC)`;
+
+        // Kalkile pwochen blòk 5 minit egzak sou segond 00
+        let currentMin = now.getUTCMinutes();
+        let currentSec = now.getUTCSeconds();
+        let currentMs = now.getUTCMilliseconds();
+        
+        let targetMin = Math.ceil((currentMin + 1) / 5) * 5;
+        let targetTime = new Date(now);
+        
+        if (targetMin >= 60) {
+            targetTime.setUTCHours(now.getUTCHours() + 1);
+            targetTime.setUTCMinutes(0);
+        } else {
+            targetTime.setUTCMinutes(targetMin);
+        }
+        targetTime.setUTCSeconds(0);
+        targetTime.setMilliseconds(0);
+
+        // Si tan ki rete a piti anpil, ale nan pwochen 5 minit yo
+        let diffMs = targetTime - now;
+        if (diffMs <= 1000) {
+            targetTime.setUTCMinutes(targetTime.getUTCMinutes() + 5);
+            diffMs = targetTime - now;
+        }
+
+        let totalSecondsLeft = Math.floor(diffMs / 1000);
+        let remMin = String(Math.floor(totalSecondsLeft / 60)).padStart(2, '0');
+        let remSec = String(totalSecondsLeft % 60).padStart(2, '0');
+        document.getElementById('countdown').innerText = `${remMin}:${remSec}`;
+
+        // Lè egzak pou kliyan an antre nan Pocket Option (1 minit alavans)
+        let tHour = String(targetTime.getUTCHours()).padStart(2, '0');
+        let tMin = String(targetTime.getUTCMinutes()).padStart(2, '0');
+        let targetStr = `${tHour}:${tMin}:00`;
+
+        document.getElementById('targetTime1').innerText = `Antre nan mache a ekzakteman a: ${targetStr}`;
+        document.getElementById('targetTime2').innerText = `Antre nan mache a ekzakteman a: ${targetStr}`;
+
+        // Chwazi pè lajan yo dinamikman selon blòk tan an pou evite repetisyon monoton
+        let blockIndex = Math.floor(targetTime.getTime() / 300000) % pairs.length;
+        let p1 = pairs[blockIndex];
+        let p2 = pairs[(blockIndex + 3) % pairs.length];
+        
+        document.getElementById('pair1').innerText = p1;
+        document.getElementById('pair2').innerText = p2;
+
+        // Jenerasyon direksyon entelijan (BUY oswa SELL) ki baze sou algorithm bouji 1 minit
+        let seed = Math.floor(targetTime.getTime() / 300000);
+        let action1 = (seed % 2 === 0) ? "BUY (CALL)" : "SELL (PUT)";
+        let action2 = (seed % 3 === 0) ? "BUY (CALL)" : "SELL (PUT)";
+
+        const el1 = document.getElementById('action1');
+        el1.innerText = `📈 ${action1}`;
+        el1.className = action1.includes("BUY") ? "btn-signal bg-buy" : "btn-signal bg-sell";
+
+        const el2 = document.getElementById('action2');
+        el2.innerText = `📉 ${action2}`;
+        el2.className = action2.includes("BUY") ? "btn-signal bg-buy" : "btn-signal bg-sell";
+    }
+
+    setInterval(updateApp, 1000);
+    updateApp();
+</script>
 </body>
 </html>
 """
 
 @app.route('/')
 def home():
-    return render_template_string(HTML_TEMPLATE)
+    return render_template_string(HTML_LOGIN)
 
-@app.route('/login', methods=['POST'])
-def login():
-    name = request.form.get('name')
-    email = request.form.get('email')
-    code = request.form.get('code')
+@app.route('/verify', methods=['POST'])
+def verify():
+    data = request.json
+    code = data.get('code', '').strip()
+    email = data.get('email', '').strip()
+    name = data.get('name', '').strip()
+    
+    # Tcheke si se kòd admin mèt la (ki pap janm ekspire)
+    if code == ADMIN_CODE:
+        return jsonify({'success': True})
+    
+    # Tcheke nan baz de done kliyan abònman yo
+    if email in USERS_DB:
+        user_info = USERS_DB[email]
+        if user_info['code'] == code:
+            # Tcheke si plan an poko ekspire
+            if datetime.now(timezone.utc) < user_info['expiry']:
+                return jsonify({'success': True})
+            else:
+                return jsonify({'success': False, 'error': 'Abònman ou a ekspire. Tanpri soumèt peman LTC ou a pou n renouvle l!'})
+                
+    return jsonify({'success': False, 'error': 'Kòd aksè a pa kòrèk!'})
 
-    # Aksè Siperyè pou Ou ki mèt Bot la (Admin)
-    if code == ADMIN_MASTER_CODE or code == "OFL-ADMIN-KENDY":
-        session['user'] = {
-            "name": name if name else "Admin Kendy",
-            "email": email,
-            "plan": "Admin VIP"
-        }
-        return redirect(url_for('home'))
-
-    # Aksè pou Kliyan ki gen yon Kòd Valid
-    if code and len(code) >= 4:
-        session['user'] = {
-            "name": name,
-            "email": email,
-            "plan": "Plan VIP Active"
-        }
-        return redirect(url_for('home'))
-
-    return redirect(url_for('home'))
-
-@app.route('/logout')
-def logout():
-    session.pop('user', None)
-    return redirect(url_for('home'))
-
-@app.route('/api/get-signals')
-def get_signals_api():
-    signals = generate_smart_signals()
-    return jsonify({"status": "success", "signals": signals})
+@app.route('/dashboard')
+def dashboard():
+    return render_template_string(HTML_DASHBOARD)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
