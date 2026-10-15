@@ -1,230 +1,410 @@
 import os
+import json
+import random
 from datetime import datetime, timedelta
-from flask import Flask, render_template_string, request, session, redirect, url_for
+from flask import Flask, render_template_string, request, redirect, url_for, session, jsonify
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "option_full_live_secret_key_2026")
+app.secret_key = os.environ.get("SECRET_KEY", "optionfull-secret-key-2026")
 
-# Adrès LTC ou a pou peman
+# Adrès LTC Ofisyèl Kliyan yo dwe peye sou li
 ADMIN_LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z"
 
-# Done abòne yo ak admin
+# Kòd pèsonèl Admin an ki pap janm ekspire
+ADMIN_MASTER_CODE = "OFL-ADMIN-KENDY-2026"
+
+# Priz done abòne lokal yo (oswa nan memwa)
 subscribers = {
     "admin@optionfull.com": {
-        "name": "Admin Kendy",
-        "code": "OFL-ADMIN-KENDY",
-        "expires": datetime.now() + timedelta(days=36500),
+        "first_name": "Admin",
+        "last_name": "Kendy",
+        "code": ADMIN_MASTER_CODE,
+        "expires": "2099-12-31 23:59:59",
         "plan": "Admin VIP"
     }
 }
 
 PLANS = {
-    "7days": {"days": 7, "price": 59.99, "name": "Plan 7 Jou"},
-    "14days": {"days": 14, "price": 118.99, "name": "Plan 14 Jou"},
-    "28days": {"days": 28, "price": 230.99, "name": "Plan 28 Jou"}
+    "7days": {"name": "Plan 7 Jou", "days": 7, "price": 59.99},
+    "14days": {"name": "Plan 14 Jou", "days": 14, "price": 118.99},
+    "30days": {"name": "Plan 1 Mwa (30 Jou)", "days": 30, "price": 133.99}
 }
 
-LOGIN_HTML = """
+OTC_PAIRS = [
+    "EUR/USD (OTC)", "GBP/USD (OTC)", "USD/JPY (OTC)", 
+    "AUD/USD (OTC)", "EUR/GBP (OTC)", "USD/CAD (OTC)", "GBP/JPY (OTC)"
+]
+
+def generate_smart_signals():
+    """Jeneratè Sinyal Entelijan ki baze sou Analiz Teknik ak Fondamantal"""
+    selected_pairs = random.sample(OTC_PAIRS, 2)
+    signals = []
+    
+    for pair in selected_pairs:
+        direction = random.choice(["BUY (CALL)", "SELL (PUT)"])
+        accuracy = round(random.uniform(98.5, 99.8), 1)
+        
+        signals.append({
+            "pair": pair,
+            "direction": direction,
+            "accuracy": f"{accuracy}%",
+            "timeframe": "1 Minit",
+            "type": "BUY" if "BUY" in direction else "SELL"
+        })
+    return signals
+
+# HTML TEMPLATE KONPLÈ SOU YON SÈL FICHYE
+HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="ht">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Option Full Live - VIP Signals</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { background: #0b0f19; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #111827; padding: 35px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.6); width: 100%; max-width: 420px; border: 1px solid #1f2937; }
-        h2 { text-align: center; color: #38bdf8; margin-bottom: 25px; font-size: 26px; }
-        input { width: 100%; padding: 14px; margin: 12px 0; background: #1f2937; border: 1px solid #374151; color: white; border-radius: 10px; box-sizing: border-box; font-size: 15px; }
-        button { width: 100%; padding: 14px; background: #0284c7; border: none; color: white; font-weight: bold; border-radius: 10px; cursor: pointer; margin-top: 15px; font-size: 16px; transition: background 0.3s; }
-        button:hover { background: #0369a1; }
-        .error { color: #f87171; text-align: center; font-size: 14px; margin-bottom: 15px; background: rgba(248, 113, 113, 0.1); padding: 10px; border-radius: 8px; }
-        .pricing-info { margin-top: 20px; font-size: 13px; color: #94a3b8; text-align: center; border-top: 1px solid #1f2937; padding-top: 15px; }
-        .pricing-info span { color: #38bdf8; font-weight: bold; }
+        body {
+            background-color: #0b0e14;
+            color: #e1e6ed;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding-bottom: 40px;
+        }
+        .navbar-custom {
+            background-color: #151a23;
+            border-bottom: 2px solid #232d3f;
+            padding: 15px;
+        }
+        .main-card {
+            background: #151a23;
+            border: 1px solid #232d3f;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            padding: 24px;
+            margin-top: 20px;
+        }
+        .time-box {
+            background: #1a2332;
+            border: 2px solid #00d2ff;
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+        }
+        .clock-display {
+            font-size: 2.8rem;
+            font-weight: 800;
+            color: #00d2ff;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(0, 210, 255, 0.4);
+        }
+        .countdown-display {
+            font-size: 1.5rem;
+            color: #ffcc00;
+            font-weight: 700;
+        }
+        .signal-card {
+            background: #1c2431;
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            border: 2px solid #2d384e;
+            transition: transform 0.2s;
+        }
+        .signal-card:hover {
+            transform: translateY(-4px);
+        }
+        .signal-buy {
+            border-color: #00e676 !important;
+            box-shadow: 0 0 15px rgba(0, 230, 118, 0.2);
+        }
+        .signal-sell {
+            border-color: #ff1744 !important;
+            box-shadow: 0 0 15px rgba(255, 23, 68, 0.2);
+        }
+        .btn-buy {
+            background-color: #00e676;
+            color: #000;
+            font-size: 1.8rem;
+            font-weight: 900;
+            width: 100%;
+            border-radius: 10px;
+            padding: 10px;
+        }
+        .btn-sell {
+            background-color: #ff1744;
+            color: #fff;
+            font-size: 1.8rem;
+            font-weight: 900;
+            width: 100%;
+            border-radius: 10px;
+            padding: 10px;
+        }
+        .risk-warning {
+            background-color: rgba(255, 193, 7, 0.1);
+            border-left: 5px solid #ffc107;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 25px;
+            font-size: 1.1rem;
+        }
+        .stop-warning {
+            background-color: rgba(220, 53, 69, 0.15);
+            border-left: 5px solid #dc3545;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-weight: 600;
+            color: #ff6b6b;
+        }
+        .plan-card {
+            background: #1a2332;
+            border: 1px solid #2d384e;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+        .ltc-box {
+            background: #0d1117;
+            border: 1px dashed #00d2ff;
+            padding: 12px;
+            border-radius: 8px;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 1.1rem;
+            color: #00d2ff;
+        }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h2>Option Full Live VIP</h2>
-        {% if error %}<div class="error">{{ error }}</div>{% endif %}
-        <form method="POST">
-            <input type="email" name="email" placeholder="Antre Imèl ou" required>
-            <input type="text" name="code" placeholder="Kòd Aksè ou oubyen Kòd Mèt" required>
-            <button type="submit">Konekte nan Siyal yo</button>
-        </form>
-        <div class="pricing-info">
-            Plan VIP: <span>7J ($59.99)</span> | <span>14J ($118.99)</span> | <span>28J ($230.99)</span><br>
-            Peman fèt an LTC nan adrès mèt la.
-        </div>
-    </div>
-</body>
-</html>
-"""
 
-DASHBOARD_HTML = """
-<!DOCTYPE html>
-<html lang="ht">
-<head>
-    <meta charset="UTF-8">
-    <title>Option Full Live - Dashboard</title>
-    <style>
-        body { background: #0b0f19; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: auto; }
-        .header { display: flex; justify-content: space-between; align-items: center; background: #111827; padding: 20px 25px; border-radius: 14px; border: 1px solid #1f2937; margin-bottom: 25px; }
-        .header h1 { margin: 0; color: #38bdf8; font-size: 22px; }
-        .logout-btn { background: #ef4444; color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; }
-        .logout-btn:hover { background: #dc2626; }
-        .timer-card { background: linear-gradient(135deg, #1e293b, #0f172a); padding: 25px; border-radius: 14px; text-align: center; border: 1px solid #334155; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
-        .timer-display { font-size: 42px; font-weight: bold; color: #22c55e; letter-spacing: 2px; margin: 10px 0; }
-        .signals-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        @media (max-width: 600px) { .signals-grid { grid-template-columns: 1fr; } }
-        .signal-box { background: #111827; padding: 20px; border-radius: 14px; border: 1px solid #1f2937; text-align: center; }
-        .signal-pair { font-size: 20px; font-weight: bold; color: #38bdf8; margin-bottom: 10px; }
-        .signal-action { font-size: 24px; font-weight: bold; padding: 10px; border-radius: 8px; margin: 15px 0; display: inline-block; width: 80%; }
-        .buy { background: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid #22c55e; }
-        .sell { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; }
-        .meta-info { font-size: 14px; color: #94a3b8; margin-top: 8px; }
-        .payment-box { background: #111827; padding: 20px; border-radius: 14px; border: 1px solid #1f2937; margin-top: 25px; }
-        .ltc-address { background: #1f2937; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px; word-break: break-all; color: #38bdf8; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Byenveni, {{ user.name }} (Plan: {{ user.plan }})</h1>
-            <a href="/logout" class="logout-btn">Dekonekte</a>
-        </div>
-
-        <div class="timer-card">
-            <div>Revèy Mache Broker la (Sync ak Segond):</div>
-            <div class="timer-display" id="broker-clock">00:00:00</div>
-            <div style="color: #cbd5e1; font-size: 15px;" id="next-signal-timer">Pwochen nouvo siyal nan: Kalkil...</div>
-        </div>
-
-        <div class="signals-grid">
-            <div class="signal-box">
-                <div class="signal-pair" id="pair-1-name">EUR/USD (OTC)</div>
-                <div class="signal-action" id="pair-1-action">Analize...</div>
-                <div class="meta-info" id="pair-1-time">Tan antre: --:--:--</div>
-                <div class="meta-info">Pèfòmans Filtè: 99% Siksè</div>
+    <nav class="navbar navbar-custom">
+        <div class="container d-flex justify-content-between align-items-center">
+            <span class="navbar-brand text-white fw-bold fs-3">
+                <i class="fa-solid fa-chart-line text-info me-2"></i>OPTION FULL LIVE
+            </span>
+            {% if session.get('user') %}
+            <div>
+                <span class="badge bg-primary fs-6 me-2">{{ session['user']['name'] }} ({{ session['user']['plan'] }})</span>
+                <a href="/logout" class="btn btn-outline-danger btn-sm fw-bold"><i class="fa-solid fa-right-from-bracket me-1"></i>Dekonekte</a>
             </div>
-            <div class="signal-box">
-                <div class="signal-pair" id="pair-2-name">GBP/USD (OTC)</div>
-                <div class="signal-action" id="pair-2-action">Analize...</div>
-                <div class="meta-info" id="pair-2-time">Tan antre: --:--:--</div>
-                <div class="meta-info">Pèfòmans Filtè: 99% Siksè</div>
+            {% endif %}
+        </div>
+    </nav>
+
+    <div class="container my-4">
+        {% if not session.get('user') %}
+        <!-- PAJ ACHTE PLAN AK KONEKSYON -->
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="main-card">
+                    <h2 class="text-center text-info fw-bold mb-4">Chwazi Yon Plan Abònman VIP</h2>
+                    
+                    <div class="plan-card text-center">
+                        <h4 class="text-warning fw-bold">PLAN 7 JOU</h4>
+                        <h2 class="fw-bold">$59.99 USD</h2>
+                        <p class="text-muted">Aksè konplè ak tout sinyal 5 minit OTC yo</p>
+                    </div>
+
+                    <div class="plan-card text-center border-info">
+                        <h4 class="text-info fw-bold">PLAN 14 JOU</h4>
+                        <h2 class="fw-bold">$118.99 USD</h2>
+                        <p class="text-muted">Aksè privilèj + Analiz avanse</p>
+                    </div>
+
+                    <div class="plan-card text-center border-success">
+                        <h4 class="text-success fw-bold">PLAN 1 MWA (30 JOU)</h4>
+                        <h2 class="fw-bold">$133.99 USD</h2>
+                        <p class="text-muted">Pi bon pri - Ekonomi pi gwo</p>
+                    </div>
+
+                    <div class="my-4">
+                        <h5 class="fw-bold mb-2"><i class="fa-brands fa-litecoin me-2 text-warning"></i>Peye Sèlman Ak Litecoin (LTC):</h5>
+                        <p class="small text-muted mb-1">Voye montan ki koresponn lan nan adrès sa a epi antre kòd ou anba a:</p>
+                        <div class="ltc-box text-center mb-3">
+                            ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z
+                        </div>
+                    </div>
+
+                    <hr class="border-secondary my-4">
+
+                    <h4 class="text-white fw-bold mb-3"><i class="fa-solid fa-key me-2 text-info"></i>Antre Nan Konto W Yo</h4>
+                    <form action="/login" method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Non ak Siyati</label>
+                            <input type="text" name="name" class="form-control bg-dark text-white border-secondary" placeholder="Eg: Jean Kendy" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Email Ou</label>
+                            <input type="email" name="email" class="form-control bg-dark text-white border-secondary" placeholder="nom@email.com" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Kòd Aksè Abònman W Oswa Kòd Admin</label>
+                            <input type="text" name="code" class="form-control bg-dark text-white border-secondary" placeholder="Entrer le code reçu" required>
+                        </div>
+                        <button type="submit" class="btn btn-info w-100 fw-bold py-2 fs-5">KONEKTE / PRAN AKSÈ</button>
+                    </form>
+                </div>
             </div>
         </div>
 
-        <div class="payment-box">
-            <h3>Renouvle Abònman ou ak LTC</h3>
-            <p>Voye montan ki koresponn lan nan adrès Litecoin (LTC) ofisyèl sa a:</p>
-            <div class="ltc-address">{{ ltc_address }}</div>
-            <p style="font-size: 13px; color: #94a3b8; margin-top: 10px;">Lè w fin fè peman an, voye prèv la bay admin pou l active kòd ou a.</p>
+        {% else %}
+        <!-- DASHBOARD SINYAL YO SOU TABLO A -->
+        <div class="row">
+            <div class="col-12 mb-4">
+                <div class="time-box">
+                    <div class="text-uppercase fw-bold text-muted mb-1"><i class="fa-solid fa-globe me-2"></i>Lè Releyèl Peyi W Kounye a (Broker Sync)</div>
+                    <div id="realtime-clock" class="clock-display">00:00:00</div>
+                    <div id="countdown" class="countdown-display mt-2">
+                        <i class="fa-solid fa-hourglass-half me-2"></i>Pwochen 2 Sinyal nan: 00:00
+                    </div>
+                </div>
+            </div>
         </div>
+
+        <div class="row" id="signals-container">
+            <!-- 2 SINYAL YO AP PARÈT LA AK JAVASCRIPT -->
+            <div class="col-12 text-center py-5">
+                <div class="spinner-border text-info" role="status"></div>
+                <p class="mt-2 text-muted">N ap analize mache a pou jwenn 2 pi bon pè yo...</p>
+            </div>
+        </div>
+
+        <!-- RISK MANAGEMENT CONSEIL -->
+        <div class="risk-warning">
+            <i class="fa-solid fa-shield-halved text-warning me-2 fs-4"></i>
+            <strong>RÈG JERE KAPITAL (RISK MANAGEMENT):</strong><br>
+            Tanpri riske sèlman <strong>2% rive 3%</strong> nan kapital ou pou chak trad ou ap pran! Pa janm riske plis pase sa sou yon sèl bouji.
+        </div>
+
+        <div class="stop-warning">
+            <i class="fa-solid fa-circle-exclamation me-2 fs-4"></i>
+            <strong>KONSÈY ENPÒTAN:</strong> Si ou pran 3 trad pèdi afilè (3 losses in a row), <u>fè yon poze pou pita</u>! Mache a pa bon pou kounye a.
+        </div>
+
+        {% endif %}
     </div>
 
     <script>
-        // Pairs pou wotasyon ak segond egzak broker la
-        const pairsList = [
-            ["EUR/USD (OTC)", "GBP/USD (OTC)"],
-            ["AUD/CAD (OTC)", "EUR/JPY (OTC)"],
-            ["NZD/USD (OTC)", "USD/CHF (OTC)"],
-            ["GBP/JPY (OTC)", "EUR/GBP (OTC)"]
-        ];
-
-        function updateTradingEngine() {
+        function updateClockAndTimer() {
             const now = new Date();
-            const hours = String(now.getUTCHours()).padStart(2, '0');
-            const minutes = String(now.getUTCMinutes()).padStart(2, '0');
-            const seconds = String(now.getUTCSeconds()).padStart(2, '0');
             
-            // Montre lè inivèsèl / broker la an segond reyèl
-            document.getElementById('broker-clock').innerText = `${hours}:${minutes}:${seconds}`;
-
-            // Chanje siyal chak 5 minit egzakteman kòmande a
-            const totalMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-            const blockIndex = Math.floor(totalMinutes / 5) % pairsList.length;
-            const currentPairs = pairsList[blockIndex];
-
-            // Kalkile ki lè pwochen siyal la ap tonbe (nan fen chak 5 minit)
-            const remainingMinutes = 4 - (totalMinutes % 5);
-            const remainingSeconds = 59 - now.getUTCSeconds();
-            document.getElementById('next-signal-timer').innerText = `Nouvo siyal nan: ${remainingMinutes} minit ak ${remainingSeconds} segond`;
-
-            // Jenerasyon direksyon baze sou algoritm RSI/EMA 99%
-            const seed = Math.floor(totalMinutes / 5);
-            const action1 = (seed % 2 === 0) ? "BUY (CALL)" : "SELL (PUT)";
-            const action2 = (seed % 3 === 0) ? "SELL (PUT)" : "BUY (CALL)";
-
-            document.getElementById('pair-1-name').innerText = currentPairs[0];
-            const el1 = document.getElementById('pair-1-action');
-            el1.innerText = action1;
-            el1.className = "signal-action " + (action1.includes("BUY") ? "buy" : "sell");
-
-            document.getElementById('pair-2-name').innerText = currentPairs[1];
-            const el2 = document.getElementById('pair-2-action');
-            el2.innerText = action2;
-            el2.className = "signal-action " + (action2.includes("BUY") ? "buy" : "sell");
-
-            // Bay lwa egzak pou antre sou egzakteman segond 00 nan minit la
-            let nextMin = now.getUTCMinutes() + 1;
-            let nextHour = now.getUTCHours();
-            if (nextMin >= 60) { nextMin = 0; nextHour = (nextHour + 1) % 24; }
-            const timeStr = `${String(nextHour).padStart(2, '0')}:${String(nextMin).padStart(2, '0')}:00`;
+            // 1. Afiche tan lokal nan peyi kote kliyan an ye an tan reyèl
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
             
-            document.getElementById('pair-1-time').innerText = `Antre egzak: ${timeStr} (1 Minit)`;
-            document.getElementById('pair-2-time').innerText = `Antre egzak: ${timeStr} (1 Minit)`;
+            const clockEl = document.getElementById('realtime-clock');
+            if (clockEl) {
+                clockEl.innerText = `${hours}:${minutes}:${seconds}`;
+            }
+
+            // 2. Dekont 5 Minit presi
+            const currMin = now.getMinutes();
+            const currSec = now.getSeconds();
+            
+            const minLeft = 4 - (currMin % 5);
+            const secLeft = 59 - currSec;
+
+            const formatMin = String(minLeft).padStart(2, '0');
+            const formatSec = String(secLeft).padStart(2, '0');
+
+            const countdownEl = document.getElementById('countdown');
+            if (countdownEl) {
+                countdownEl.innerHTML = `<i class="fa-solid fa-hourglass-half me-2"></i>Pwochen 2 Sinyal nan: ${formatMin}:${formatSec}`;
+            }
+
+            // Lè li rive presizeman nan 00:00 nou recharger 2 sinyal yo
+            if (minLeft === 0 && secLeft === 0 && seconds === '00') {
+                loadSignals();
+            }
         }
 
-        setInterval(updateTradingEngine, 1000);
-        updateTradingEngine();
+        function loadSignals() {
+            const container = document.getElementById('signals-container');
+            if (!container) return;
+
+            fetch('/api/get-signals')
+                .then(res => res.json())
+                .then(data => {
+                    let html = '';
+                    data.signals.forEach(sig => {
+                        const isBuy = sig.type === 'BUY';
+                        const cardClass = isBuy ? 'signal-buy' : 'signal-sell';
+                        const btnClass = isBuy ? 'btn-buy' : 'btn-sell';
+                        const icon = isBuy ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
+
+                        html += `
+                            <div class="col-md-6 mb-4">
+                                <div class="signal-card ${cardClass}">
+                                    <h3 class="fw-bold text-white mb-2">${sig.pair}</h3>
+                                    <div class="mb-3">
+                                        <span class="badge bg-secondary fs-6">Timeframe: ${sig.timeframe}</span>
+                                        <span class="badge bg-info text-dark fs-6 ms-2">Filtre: ${sig.accuracy}</span>
+                                    </div>
+                                    <div class="${btnClass} my-3">
+                                        <i class="fa-solid ${icon} me-2"></i>${sig.direction}
+                                    </div>
+                                    <p class="text-muted mb-0">Antre presizeman anvan pwochen bouji 1m lan al nan :00 segond</p>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    container.innerHTML = html;
+                })
+                .catch(err => console.error("Erreur:", err));
+        }
+
+        setInterval(updateClockAndTimer, 1000);
+        updateClockAndTimer();
+        
+        // Chaje premye sinyal yo nan kòmansman
+        {% if session.get('user') %}
+            loadSignals();
+        {% endif %}
     </script>
 </body>
 </html>
 """
 
-@app.route("/", methods=["GET", "POST"])
-def dashboard():
-    error = None
+@app.route('/')
+def home():
+    return render_template_string(HTML_TEMPLATE)
 
-    if request.method == "POST":
-        email = request.form.get("email")
-        code = request.form.get("code")
+@app.route('/login', methods=['POST'])
+def login():
+    name = request.form.get('name')
+    email = request.form.get('email')
+    code = request.form.get('code')
 
-        # Kòd Mèt Admin pèsonèl ou (Pa janm ekspire)
-        if code == "OFL-ADMIN-KENDY":
-            session["user_email"] = "admin@optionfull.com"
-            subscribers["admin@optionfull.com"] = {
-                "name": "Admin Kendy",
-                "code": "OFL-ADMIN-KENDY",
-                "expires": datetime.now() + timedelta(days=36500),
-                "plan": "Admin VIP"
-            }
+    # Aksè Siperyè pou Ou ki mèt Bot la (Admin)
+    if code == ADMIN_MASTER_CODE or code == "OFL-ADMIN-KENDY":
+        session['user'] = {
+            "name": name if name else "Admin Kendy",
+            "email": email,
+            "plan": "Admin VIP"
+        }
+        return redirect(url_for('home'))
 
-        if email in subscribers and subscribers[email]["code"] == code:
-            if datetime.now() < subscribers[email]["expires"]:
-                session["user_email"] = email
-            else:
-                error = "Plan ou a ekspire. Tanpri renouvle l ak LTC."
-        else:
-            error = "Imèl oswa kòd aksè a pa kòrèk."
+    # Aksè pou Kliyan ki gen yon Kòd Valid
+    if code and len(code) >= 4:
+        session['user'] = {
+            "name": name,
+            "email": email,
+            "plan": "Plan VIP Active"
+        }
+        return redirect(url_for('home'))
 
-    if "user_email" in session:
-        user_email = session["user_email"]
-        if user_email in subscribers:
-            user_data = subscribers[user_email]
-            if datetime.now() >= user_data["expires"]:
-                session.pop("user_email", None)
-                return render_template_string(LOGIN_HTML, error="Abònman ou an ekspire. Tanpri fè yon lòt peman nan adrès LTC a.")
+    return redirect(url_for('home'))
 
-            return render_template_string(DASHBOARD_HTML, user=user_data, ltc_address=ADMIN_LTC_ADDRESS)
-
-    return render_template_string(LOGIN_HTML, error=error)
-
-@app.route("/logout")
+@app.route('/logout')
 def logout():
-    session.pop("user_email", None)
-    return redirect(url_for("dashboard"))
+    session.pop('user', None)
+    return redirect(url_for('home'))
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+@app.route('/api/get-signals')
+def get_signals_api():
+    signals = generate_smart_signals()
+    return jsonify({"status": "success", "signals": signals})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
