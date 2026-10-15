@@ -9,12 +9,10 @@ app = Flask(__name__)
 ADMIN_CODE = os.environ.get("ACCESS_CODE", "ADMIN123")
 LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z"
 
-# Baz de done an memwa pou kliyan yo (oswa ou ka konekte l ak yon baz reyèl pita)
-# Fòma: { "email": { "name": "Non", "expiry": datetime, "code": "kòd" } }
 USERS_DB = {
     "motivationsucces92@gmail.com": {
         "name": "Kendy Kendyjean",
-        "expiry": datetime.now(timezone.utc) + timedelta(days=3650),  # Aksè admin illimité
+        "expiry": datetime.now(timezone.utc) + timedelta(days=3650),
         "code": ADMIN_CODE
     }
 }
@@ -122,7 +120,6 @@ HTML_DASHBOARD = """
         <div style="font-size: 11px; color: #22c55e; margin-top: 4px;">🟢 Mache Reyèl 24/7 (Filtè RSI 99%)</div>
     </div>
 
-    <!-- Sinyal 1 -->
     <div class="signal-card buy-border">
         <div class="pair-title">
             <span id="pair1">EUR/USD (OTC)</span>
@@ -133,7 +130,6 @@ HTML_DASHBOARD = """
         <div class="btn-signal bg-buy" id="action1">📈 BUY (CALL)</div>
     </div>
 
-    <!-- Sinyal 2 -->
     <div class="signal-card sell-border">
         <div class="pair-title">
             <span id="pair2">GBP/JPY (OTC)</span>
@@ -145,43 +141,38 @@ HTML_DASHBOARD = """
     </div>
 
     <div class="footer">
-        Option Full Live v3.0 • Tout dwa rezève pou kliyan VIP yo.
+        Option Full Live v3.1 • Tout dwa rezève.
     </div>
 </div>
 
 <script>
-    // Lis pè lajan OTC ki pi fò yo pou wotasyon entelijan
     const pairs = ["EUR/USD (OTC)", "GBP/USD (OTC)", "EUR/GBP (OTC)", "AUD/CAD (OTC)", "USD/CHF (OTC)", "GBP/JPY (OTC)", "EUR/JPY (OTC)"];
 
     function updateApp() {
-        // Sèvi ak lè inivèsèl (UTC) pou tout moun nan nenpòt peyi jwenn egzakteman menm segond la
+        // Sèvi ak lè lokal telefòn ou an dirèkteman
         const now = new Date();
-        const utcHours = String(now.getUTCHours()).padStart(2, '0');
-        const utcMinutes = String(now.getUTCMinutes()).padStart(2, '0');
-        const utcSeconds = String(now.getUTCSeconds()).padStart(2, '0');
-        document.getElementById('utcClock\').innerText = `${utcHours}:${utcMinutes}:${utcSeconds} (UTC)`;
-
-        // Kalkile pwochen blòk 5 minit egzak sou segond 00
-        let currentMin = now.getUTCMinutes();
-        let currentSec = now.getUTCSeconds();
-        let currentMs = now.getUTCMilliseconds();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
         
+        document.getElementById('utcClock').innerText = `${hours}:${minutes}:${seconds}`;
+
+        let currentMin = now.getMinutes();
         let targetMin = Math.ceil((currentMin + 1) / 5) * 5;
         let targetTime = new Date(now);
         
         if (targetMin >= 60) {
-            targetTime.setUTCHours(now.getUTCHours() + 1);
-            targetTime.setUTCMinutes(0);
+            targetTime.setHours(now.getHours() + 1);
+            targetTime.setMinutes(0);
         } else {
-            targetTime.setUTCMinutes(targetMin);
+            targetTime.setMinutes(targetMin);
         }
-        targetTime.setUTCSeconds(0);
+        targetTime.setSeconds(0);
         targetTime.setMilliseconds(0);
 
-        // Si tan ki rete a piti anpil, ale nan pwochen 5 minit yo
         let diffMs = targetTime - now;
         if (diffMs <= 1000) {
-            targetTime.setUTCMinutes(targetTime.getUTCMinutes() + 5);
+            targetTime.setMinutes(targetTime.getMinutes() + 5);
             diffMs = targetTime - now;
         }
 
@@ -190,15 +181,13 @@ HTML_DASHBOARD = """
         let remSec = String(totalSecondsLeft % 60).padStart(2, '0');
         document.getElementById('countdown').innerText = `${remMin}:${remSec}`;
 
-        // Lè egzak pou kliyan an antre nan Pocket Option (1 minit alavans)
-        let tHour = String(targetTime.getUTCHours()).padStart(2, '0');
-        let tMin = String(targetTime.getUTCMinutes()).padStart(2, '0');
+        let tHour = String(targetTime.getHours()).padStart(2, '0');
+        let tMin = String(targetTime.getMinutes()).padStart(2, '0');
         let targetStr = `${tHour}:${tMin}:00`;
 
         document.getElementById('targetTime1').innerText = `Antre nan mache a ekzakteman a: ${targetStr}`;
         document.getElementById('targetTime2').innerText = `Antre nan mache a ekzakteman a: ${targetStr}`;
 
-        // Chwazi pè lajan yo dinamikman selon blòk tan an pou evite repetisyon monoton
         let blockIndex = Math.floor(targetTime.getTime() / 300000) % pairs.length;
         let p1 = pairs[blockIndex];
         let p2 = pairs[(blockIndex + 3) % pairs.length];
@@ -206,7 +195,6 @@ HTML_DASHBOARD = """
         document.getElementById('pair1').innerText = p1;
         document.getElementById('pair2').innerText = p2;
 
-        // Jenerasyon direksyon entelijan (BUY oswa SELL) ki baze sou algorithm bouji 1 minit
         let seed = Math.floor(targetTime.getTime() / 300000);
         let action1 = (seed % 2 === 0) ? "BUY (CALL)" : "SELL (PUT)";
         let action2 = (seed % 3 === 0) ? "BUY (CALL)" : "SELL (PUT)";
@@ -238,19 +226,16 @@ def verify():
     email = data.get('email', '').strip()
     name = data.get('name', '').strip()
     
-    # Tcheke si se kòd admin mèt la (ki pap janm ekspire)
     if code == ADMIN_CODE:
         return jsonify({'success': True})
     
-    # Tcheke nan baz de done kliyan abònman yo
     if email in USERS_DB:
         user_info = USERS_DB[email]
         if user_info['code'] == code:
-            # Tcheke si plan an poko ekspire
             if datetime.now(timezone.utc) < user_info['expiry']:
                 return jsonify({'success': True})
             else:
-                return jsonify({'success': False, 'error': 'Abònman ou a ekspire. Tanpri soumèt peman LTC ou a pou n renouvle l!'})
+                return jsonify({'success': False, 'error': 'Abònman ou a ekspire!'})
                 
     return jsonify({'success': False, 'error': 'Kòd aksè a pa kòrèk!'})
 
