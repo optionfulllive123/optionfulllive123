@@ -47,6 +47,14 @@ HTML_LOGIN = """
         <div class="ltc-addr">ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z</div>
         <p style="font-size:11px; margin:5px 0 0 0;">Voye abònman w la pou resevwa kòd pèsonèl ou, oswa itilize kòd admin ou an.</p>
     </div>
+    <div style="background: #1e293b; border: 1px dashed #f59e0b; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; color: white; text-align: left;">
+        <p style="margin: 3px 0; color: #38bdf8;">📌 <strong>7 Jou Aksè:</strong> $59.99 USD</p>
+        <p style="margin: 3px 0; color: #38bdf8;">📌 <strong>14 Jou Aksè:</strong> $118.99 USD</p>
+        <p style="margin: 3px 0; color: #38bdf8;">📌 <strong>1 Mwa Aksè:</strong> $135.99 USD</p>
+        <p style="margin-top: 8px; color: #f59e0b; word-break: break-all;">
+            Peye sou Adrès LTC: <strong>ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z</strong>
+        </p>
+    </div>
 
     <form id="loginForm">
         <input type="text" id="name" placeholder="Non ak Siyati" required>
@@ -225,19 +233,18 @@ def verify():
     code = data.get('code', '').strip()
     email = data.get('email', '').strip()
     name = data.get('name', '').strip()
-    
+
+    # 1. Si se ou menm (Admin), ou toujou gen aksè san limit
     if code == ADMIN_CODE:
         return jsonify({'success': True})
-    
-    if email in USERS_DB:
-        user_info = USERS_DB[email]
-        if user_info['code'] == code:
-            if datetime.now(timezone.utc) < user_info['expiry']:
-                return jsonify({'success': True})
-            else:
-                return jsonify({'success': False, 'error': 'Abònman ou a ekspire!'})
-                
-    return jsonify({'success': False, 'error': 'Kòd aksè a pa kòrèk!'})
+
+    # 2. Pou nenpòt kliyan ki peye yon plan epi ki mete nenpòt kòd ak imèl:
+    # Li tou ba li aksè ak sinyal yo touswit!
+    if code and email:
+        return jsonify({'success': True})
+
+    return jsonify({'success': False, 'message': 'Tanpri rantre yon kòd ak yon imèl!'})
+
 
 @app.route('/dashboard')
 def dashboard():
