@@ -6,16 +6,22 @@ from flask import Flask, render_template_string, request, jsonify
 app = Flask(__name__)
 
 # Kòd aksè admin ou a ki pap janm ekspire
-ADMIN_CODE = os.environ.get("ACCESS_CODE", "ADMIN123")
+ADMIN_CODE = os.environ.get("ACCESS_CODE", "1234")
 LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z"
 
 USERS_DB = {
-    "motivationsucces92@gmail.com": {
+    "motivationsucces29@gmail.com": {
         "name": "Kendy Kendyjean",
-        "expiry": datetime.now(timezone.utc) + timedelta(days=3650),
+        "expiry": datetime.now(timezone.utc) + timedelta(days=365),
         "code": ADMIN_CODE
+    },
+    "kliyan1@gmail.com": {
+        "name": "Jean Marc",
+        "code": "JM7JOU88",
+        "expiry": datetime(2026, 10, 26, 23, 59, 59, tzinfo=timezone.utc)
     }
 }
+
 
 HTML_LOGIN = """
 <!DOCTYPE html>
