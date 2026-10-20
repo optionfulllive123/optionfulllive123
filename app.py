@@ -15,7 +15,7 @@ TELEGRAM_USERNAME = "RANPLASE_AK_USERNAME_TELEGRAM_OU"
 PLANS = {
     "1_month": {"name": "Plan 1 Mwa (30 Jou)", "days": 30, "price_usd": 20},
     "3_months": {"name": "Plan 3 Mwa (90 Jou)", "days": 90, "price_usd": 50},
-    " lifetime": {"name": "Plan Unilimité", "days": 3650, "price_usd": 150} # 10 ans
+    " lifetime":{"name": "Plan Unilimité", "days": 3650, "price_usd": 150} # 10 ans
 }
 
 # ==========================================
