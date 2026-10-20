@@ -1,38 +1,25 @@
+import os
 import sqlite3
-from datetime import datetime, timedelta
+import datetime
+import random
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 
 app = Flask(__name__)
-app.secret_key = "cle_sekre_option_full_live_123"
+app.secret_key = "option_full_live_secret_key_2026"
 
-# ==========================================
-# CONFIGURATION (Mete Enfòmasyon pa w yo la)
-# ==========================================
-LTC_WALLET_ADDRESS = "RANPLASE_AK_ADRES_LTC_SAFEPAL_OU"
-TELEGRAM_USERNAME = "RANPLASE_AK_USERNAME_TELEGRAM_OU"
+ADMIN_CODE = "ADMIN2026"  # Kòd sekrè pa w pou w gen aksè nan Dashboard la
+LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqqsr4q8kqyjmc8gmekxu3s4z"
 
-# Pristri Plan yo
-PLANS = {
-    "1_month": {"name": "Plan 1 Mwa (30 Jou)", "days": 30, "price_usd": 20},
-    "3_months": {"name": "Plan 3 Mwa (90 Jou)", "days": 90, "price_usd": 50},
-    " lifetime":{"name": "Plan Unilimité", "days": 3650, "price_usd": 150} # 10 ans
-}
-
-# ==========================================
-# BAZ DE DONE (sqlite3)
-# ==========================================
 def init_db():
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            selected_plan TEXT,
-            copied_ltc INTEGER DEFAULT 0,
-            is_paid INTEGER DEFAULT 0,
-            expiration_date DATETIME
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS access_codes (
+            code TEXT PRIMARY KEY,
+            days INTEGER,
+            start_date TIMESTAMP,
+            expire_date TIMESTAMP,
+            status TEXT DEFAULT 'unused'
         )
     ''')
     conn.commit()
@@ -40,152 +27,133 @@ def init_db():
 
 init_db()
 
-# ==========================================
-# 1. ENREGISTREMENT (Non + Email)
-# ==========================================
 @app.route('/')
-def index():
+def home():
     return render_template('index.html')
 
 @app.route('/register', methods=['POST'])
 def register():
-    name = request.form.get('name')
-    email = request.form.get('email')
-    
-    if not name or not email:
-        return redirect(url_for('index'))
-        
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-    
-    # Enregistre ou met à jour le client
-    cursor.execute('SELECT * FROM users WHERE email = ?', (email,))
-    user = cursor.fetchone()
-    
-    if not user:
-        cursor.execute('INSERT INTO users (name, email, is_paid) VALUES (?, ?, 0)', (name, email))
-    else:
-        cursor.execute('UPDATE users SET name = ? WHERE email = ?', (name, email))
-        
-    conn.commit()
-    conn.close()
-    
-    session['user_email'] = email
-    
-    # Voye li sou paj plan yo dirèkteman
+    session['user_name'] = request.form.get('name')
+    session['user_email'] = request.form.get('email')
     return redirect(url_for('plans'))
 
-# ==========================================
-# 2. SELEKSYON PLAN YO
-# ==========================================
 @app.route('/plans')
 def plans():
-    if not session.get('user_email'):
-        return redirect(url_for('index'))
-    return render_template('plans.html', plans=PLANS)
+    error = request.args.get('error')
+    return render_template('plans.html', ltc_address=LTC_ADDRESS, error=error)
 
-@app.route('/select-plan', methods=['POST'])
-def select_plan():
-    email = session.get('user_email')
-    plan_key = request.form.get('plan')
-    
-    if not email or plan_key not in PLANS:
-        return redirect(url_for('plans'))
+# PAJ KACHE POU OU KREYE KÒD POU KLIYAN YO
+@app.route('/admin-dashboard', methods=['GET', 'POST'])
+def admin_dashboard():
+    if request.method == 'POST':
+        admin_input = request.form.get('admin_code')
+        if admin_input == ADMIN_CODE:
+            session['is_admin'] = True
+
+    if not session.get('is_admin'):
+        return '''
+            <div style="text-align:center; padding-top:50px; font-family:sans-serif; background:#121212; color:white; height:100vh;">
+                <h2>Aksè Reservé pou Admin Sèlman 🔒</h2>
+                <form method="POST">
+                    <input type="password" name="admin_code" placeholder="Antre Kòd Admin W la" style="padding:10px; font-size:16px;" required>
+                    <button type="submit" style="padding:10px 20px; background:#28a745; color:white; border:none; font-size:16px;">Antre</button>
+                </form>
+            </div>
+        '''
+
+    msg = None
+    if request.method == 'POST' and 'new_code' in request.form:
+        new_code = request.form.get('new_code').strip().upper()
+        days = int(request.form.get('days'))
         
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-    cursor.execute('UPDATE users SET selected_plan = ? WHERE email = ?', (plan_key, email))
-    conn.commit()
+        conn = sqlite3.connect('users.db')
+        c = conn.cursor()
+        try:
+            c.execute("INSERT INTO access_codes (code, days, status) VALUES (?, ?, 'unused')", (new_code, days))
+            conn.commit()
+            msg = f"✅ Kòd '{new_code}' pou {days} jou kreye ak siksè!"
+        except Exception as e:
+            msg = "❌ Kòd sa a te deja egziste! Chwazi yon lòt non kòd."
+        conn.close()
+
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT code, days, status, expire_date FROM access_codes")
+    codes_list = c.fetchall()
     conn.close()
-    
-    return redirect(url_for('payment'))
 
-# ==========================================
-# 3. PAJ PEMAN LTC & KOPIE ADRES
-# ==========================================
-@app.route('/payment')
-def payment():
-    email = session.get('user_email')
-    if not email:
-        return redirect(url_for('index'))
-        
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT selected_plan FROM users WHERE email = ?', (email,))
-    user = cursor.fetchone()
-    conn.close()
-    
-    plan_info = PLANS.get(user[0]) if user else None
-    
-    return render_template('payment.html', 
-                           ltc_address=LTC_WALLET_ADDRESS, 
-                           telegram=TELEGRAM_USERNAME,
-                           plan=plan_info)
+    return render_template('admin.html', msg=msg, codes_list=codes_list)
 
-@app.route('/mark-copied', methods=['POST'])
-def mark_copied():
-    # Yo klike sou kopie adrès LTC a
-    email = session.get('user_email')
-    if email:
-        conn = sqlite3.connect('database.db')
-        cursor = conn.cursor()
-        
-        # Jwenn jou plan an pou kalkile dat ekspirasyon
-        cursor.execute('SELECT selected_plan FROM users WHERE email = ?', (email,))
-        row = cursor.fetchone()
-        plan_key = row[0] if row else "1_month"
-        days_to_add = PLANS.get(plan_key, {}).get('days', 30)
-        
-        # Preprasyon aksè an
-        exp_date = datetime.now() + timedelta(days=days_to_add)
-        exp_str = exp_date.strftime('%Y-%m-%d %H:%M:%S')
-        
-        cursor.execute('UPDATE users SET copied_ltc = 1, is_paid = 1, expiration_date = ? WHERE email = ?', (exp_str, email))
+@app.route('/verify-code', methods=['POST'])
+def verify_code():
+    code = request.form.get('code', '').strip().upper()
+    now = datetime.datetime.now()
+
+    if code == ADMIN_CODE:
+        session['access_code'] = code
+        session['is_admin'] = True
+        return redirect(url_for('signals'))
+
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT days, start_date, expire_date, status FROM access_codes WHERE code=?", (code,))
+    row = c.fetchone()
+
+    if not row:
+        conn.close()
+        return redirect(url_for('plans', error="Kòd sa a pa egziste! Antre yon bon kòd."))
+
+    days, start_date, expire_date, status = row
+
+    if status == 'unused':
+        exp_date = now + datetime.timedelta(days=days)
+        c.execute("UPDATE access_codes SET start_date=?, expire_date=?, status='active' WHERE code=?",
+                  (now.strftime("%Y-%m-%d %H:%M:%S"), exp_date.strftime("%Y-%m-%d %H:%M:%S"), code))
         conn.commit()
         conn.close()
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 400
+        session['access_code'] = code
+        return redirect(url_for('signals'))
 
-# ==========================================
-# 4. PAJ SIYAL BOT LA (Aksè pwoteje ak Lè Reyèl)
-# ==========================================
+    elif status == 'active':
+        exp_dt = datetime.datetime.strptime(expire_date, "%Y-%m-%d %H:%M:%S")
+        if now > exp_dt:
+            c.execute("UPDATE access_codes SET status='expired' WHERE code=?", (code,))
+            conn.commit()
+            conn.close()
+            return render_template('expired.html', message=f"{days} jou abònman w lan fini nèt! Ranouvle plan w pou w gen aksè ankò.")
+        else:
+            conn.close()
+            session['access_code'] = code
+            return redirect(url_for('signals'))
+
+    elif status == 'expired':
+        conn.close()
+        return render_template('expired.html', message="Kòd sa a fin ekspire! Li pa ka itilize ankò.")
+
+    conn.close()
+    return redirect(url_for('plans', error="Erè nan verifikasyon kòd la."))
+
 @app.route('/signals')
 def signals():
-    email = session.get('user_email')
-    if not email:
-        return redirect(url_for('index'))
-        
-    # Pran lè local/reyèl aparèy la si li pase l nan paramèt query (oswa lè sèvè a)
-    client_time_str = request.args.get('user_time')
-    if client_time_str:
-        try:
-            current_time = datetime.strptime(client_time_str, '%Y-%m-%d %H:%M:%S')
-        except:
-            current_time = datetime.now()
-    else:
-        current_time = datetime.now()
-
-    conn = sqlite3.connect('database.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT copied_ltc, is_paid, expiration_date FROM users WHERE email = ?', (email,))
-    user = cursor.fetchone()
-    conn.close()
+    code = session.get('access_code')
+    if not code:
+        return redirect(url_for('plans'))
     
-    # 1. Si li poko kopie adrès la oswa poko valide: BLOKE!
-    if not user or user[0] != 1 or user[1] != 1:
-        return redirect(url_for('payment'))
-        
-    # 2. Kontwòl jou yo ak lè reyèl: Si dat la depase, KOUPE AKSÈ A!
-    exp_date = datetime.strptime(user[2], '%Y-%m-%d %H:%M:%S')
-    if current_time > exp_date:
-        return render_template('expired.html', message="Abònman ou an fini! Tanpri chwazi yon nouvo plan pou renouvle.")
+    now = datetime.datetime.now()
+    pairs = ["EUR/USD (OTC) 99%", "GBP/USD (OTC) 99%", "USD/JPY (OTC) 98%", "AUD/USD (OTC) 99%"]
+    
+    selected_pair = random.choice(pairs)
+    direction = random.choice(["CALL 🟢 (BUY)", "PUT 🔴 (SELL)"])
+    
+    next_minute = (now + datetime.timedelta(minutes=1)).strftime("%H:%M:00")
+    entry_time = (now + datetime.timedelta(minutes=2)).strftime("%H:%M:00")
+    
+    return render_template('signals.html', 
+                           pair=selected_pair, 
+                           direction=direction, 
+                           signal_time=next_minute, 
+                           entry_time=entry_time,
+                           current_time=now.strftime("%H:%M:%S"))
 
-    # Si tout bagay an règ, li jwenn siyal bot la!
-    return render_template('signals.html', current_time=current_time)
-
-# ==========================================
-# 5. EXECUTION DÉMARRAGE
-# ==========================================
 if __name__ == '__main__':
-    # Nou kenbe menm port 5000 lan san nou pa anyen nan rezo a
     app.run(host='0.0.0.0', port=5000, debug=True)
