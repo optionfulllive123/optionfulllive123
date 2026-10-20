@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ht">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Admin - Option Full Live</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #0d1117; color: white; text-align: center; padding: 20px; }
+        .box { max-width: 500px; margin: auto; background: #161b22; padding: 20px; border-radius: 10px; border: 1px solid #30363d; }
+        input, select { width: 90%; padding: 10px; margin: 8px 0; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 5px; }
+        button { width: 95%; padding: 12px; background: #238636; color: white; border: none; font-weight: bold; border-radius: 5px; cursor: pointer; }
+        table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+        th, td { border: 1px solid #30363d; padding: 8px; font-size: 13px; }
+        th { background: #21262d; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>Dashboard Admin - Kreye Kòd Kliyan 🔑</h2>
+        
+        {% if msg %}
+            <p style="color: #7ee787; font-weight: bold;">{{ msg }}</p>
+        {% endif %}
+
+        <form method="POST">
+            <input type="text" name="new_code" placeholder="Antre Non Kòd La (egz: KLIYAN77)" required>
+            <select name="days">
+                <option value="7">Plan 7 Jou ($59.99)</option>
+                <option value="14">Plan 14 Jou ($118.99)</option>
+                <option value="30">Plan 1 Mwa ($234.99)</option>
+            </select>
+            <button type="submit">Kreye Kòd Sa A</button>
+        </form>
+
+        <h3>Lis Kòd Ki Kreye Yo:</h3>
+        <table>
+            <tr>
+                <th>Kòd</th>
+                <th>Jou</th>
+                <th>Estati</th>
+                <th>Dat Ekspirasyon</th>
+            </tr>
+            {% for item in codes_list %}
+            <tr>
+                <td><b>{{ item[0] }}</b></td>
+                <td>{{ item[1] }} jou</td>
+                <td>{{ item[2] }}</td>
+                <td>{{ item[3] if item[3] else 'Poko itilize' }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</body>
+</html>
