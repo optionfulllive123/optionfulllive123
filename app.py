@@ -1,25 +1,28 @@
 import os
 import sqlite3
-import datetime
 import random
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+import string
+from datetime import datetime, timedelta
+from flask import Flask, render_template_string, request, redirect, url_for, session
 
 app = Flask(__name__)
 app.secret_key = "option_full_live_secret_key_2026"
 
-ADMIN_CODE = "ADMIN2026"  # Kòd sekrè pa w pou w gen aksè nan Dashboard la
-LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqqsr4q8kqyjmc8gmekxu3s4z"
+ADMIN_CODE = "ADMIN2026"  # Kòd sekrè pa w pou w ka rantre nan /admin
+LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4kqyjmc8gmekxu3s4z"
 
 def init_db():
-    conn = sqlite3.connect('users.db')
+    conn = sqlite3.connect('database.db')
     c = conn.cursor()
+    # Tab pou Kòd Aksè yo
     c.execute('''
         CREATE TABLE IF NOT EXISTS access_codes (
             code TEXT PRIMARY KEY,
             days INTEGER,
-            start_date TIMESTAMP,
-            expire_date TIMESTAMP,
-            status TEXT DEFAULT 'unused'
+            status TEXT DEFAULT 'unused',
+            used_by_email TEXT,
+            activation_date TIMESTAMP,
+            expiration_date TIMESTAMP
         )
     ''')
     conn.commit()
@@ -27,133 +30,393 @@ def init_db():
 
 init_db()
 
-@app.route('/')
-def home():
-    return render_template('index.html')
+# Fonksyon pou jenere yon kòd aleatwa
+def generate_random_code(length):
+    return ''.join(random.choices(string.digits, k=length))
 
-@app.route('/register', methods=['POST'])
-def register():
-    session['user_name'] = request.form.get('name')
-    session['user_email'] = request.form.get('email')
-    return redirect(url_for('plans'))
+# --- HTML TEMPLATES ---
+
+HTML_LOGIN = """
+<!DOCTYPE html>
+<html lang="ht">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Option Full Live - BENVENI</title>
+    <style>
+        body { background-color: #ffffff; color: #111111; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #ffffff; border: 2px solid #e60000; padding: 25px; border-radius: 12px; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 4px 15px rgba(230,0,0,0.15); }
+        h2 { color: #e60000; margin-bottom: 20px; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 15px; }
+        button { width: 100%; padding: 12px; background-color: #e60000; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        button:hover { background-color: #cc0000; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>OPTION FULL LIVE</h2>
+        <p style="color: #555;">Antre ensfòmasyon ou yo pou w ka kontinye ale nan plan d'abonman yo:</p>
+        <form action="/" method="POST">
+            <input type="text" name="name" placeholder="Non ou" required>
+            <input type="email" name="email" placeholder="Imèl ou" required>
+            <button type="submit">KONTINYE</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
+
+HTML_PLANS = """
+<!DOCTYPE html>
+<html lang="ht">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chwazi Yon Plan - Option Full Live</title>
+    <style>
+        body { background-color: #f9f9f9; color: #111; font-family: Arial, sans-serif; padding: 20px; text-align: center; }
+        .container { max-width: 500px; margin: 0 auto; }
+        .plan-card { background: #fff; border: 2px solid #e60000; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .plan-title { color: #e60000; font-size: 22px; font-weight: bold; }
+        .price { font-size: 20px; margin: 10px 0; color: #333; }
+        .ltc-box { background: #f1f1f1; padding: 10px; border-radius: 6px; font-size: 12px; word-break: break-all; margin: 10px 0; border: 1px dashed #e60000; }
+        .btn-copy { background: #e60000; color: #fff; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .access-form { margin-top: 30px; background: #fff; padding: 20px; border-radius: 10px; border: 2px solid #111; }
+        input { padding: 12px; width: 80%; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 10px; font-size: 16px; text-align: center; }
+        .btn-submit { background: #111; color: #fff; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 16px; }
+        .msg-error { color: red; font-weight: bold; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="color: #e60000;">PLAN D'ABONMAN</h1>
+        <p>Voye peman an sou adrès LTC ki anba a pou chwazi plan ou vle a:</p>
+
+        <!-- Plan 7 Jou -->
+        <div class="plan-card">
+            <div class="plan-title">PLAN 7 JOU</div>
+            <div class="price">$59.99 USD</div>
+            <p style="font-size: 13px; color: #666;">Aksè ak Kòd 6 chif pou 7 jou otomatik</p>
+            <div class="ltc-box" id="ltc1">{{ ltc_address }}</div>
+            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
+        </div>
+
+        <!-- Plan 15 Jou -->
+        <div class="plan-card">
+            <div class="plan-title">PLAN 15 JOU</div>
+            <div class="price">$119.99 USD</div>
+            <p style="font-size: 13px; color: #666;">Aksè ak Kòd 7 chif pou 15 jou otomatik</p>
+            <div class="ltc-box">{{ ltc_address }}</div>
+            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
+        </div>
+
+        <!-- Plan 30 Jou -->
+        <div class="plan-card">
+            <div class="plan-title">PLAN 1 MWA (30 JOU)</div>
+            <div class="price">$199.99 USD</div>
+            <p style="font-size: 13px; color: #666;">Aksè ak Kòd 8 chif pou 30 jou otomatik</p>
+            <div class="ltc-box">{{ ltc_address }}</div>
+            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
+        </div>
+
+        <!-- Rantre Kòd Aksè -->
+        <div class="access-form">
+            <h3>RANTRE KÒD AKSÈ OU</h3>
+            {% if error %}
+                <div class="msg-error">{{ error }}</div>
+            {% endif %}
+            <form action="/verify-code" method="POST">
+                <input type="text" name="access_code" placeholder="Antre Kòd Aksè Ou La" required><br>
+                <button type="submit" class="btn-submit">RANTRE NAN PLATFÒM LAN</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function copyAddress() {
+            navigator.clipboard.writeText("{{ ltc_address }}");
+            alert("Adrès LTC an kopye ak siksè!");
+        }
+    </script>
+</body>
+</html>
+"""
+
+HTML_SIGNALS = """
+<!DOCTYPE html>
+<html lang="ht">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sinyal En Direct - Option Full Live</title>
+    <style>
+        body { background-color: #ffffff; color: #111; font-family: Arial, sans-serif; padding: 15px; text-align: center; }
+        .header { background: #e60000; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .time-box { font-size: 26px; font-weight: bold; margin: 10px 0; color: #e60000; }
+        .signals-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; }
+        .signal-card { background: #fff; border: 2px solid #111; border-radius: 8px; padding: 15px; width: 280px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .pair { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+        .action-buy { color: green; font-size: 22px; font-weight: bold; }
+        .action-sell { color: red; font-size: 22px; font-weight: bold; }
+        .details { font-size: 14px; margin: 5px 0; color: #444; }
+        .footer-info { margin-top: 30px; font-size: 13px; color: #666; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>OPTION FULL LIVE - PLATFÒM SINYAL</h1>
+        <p>Aksè Aktif: Bon travay!</p>
+    </div>
+
+    <div>TAN REYÈL KI SOU APARÈY OU A:</div>
+    <div class="time-box" id="live-clock">--:--:--</div>
+
+    <h2 style="color: #e60000; margin-top: 25px;">2 NOUVO SINYAL (CHAK 5 MINIT)</h2>
+    <p style="font-size: 13px;">Analiz Teknik & Fondamantal (Timeframe 1-Minit)</p>
+
+    <div class="signals-container" id="signals-box">
+        <!-- Sinyal yo ap chaje otomatikman ak JavaScript -->
+    </div>
+
+    <div class="footer-info">
+        <p>⚠️ Antre presizyon a lekzak tan yo montre a (Egzanp: Antre a 1h19.00 pou bouji 1h20.00 an).</p>
+    </div>
+
+    <script>
+        function updateClock() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            document.getElementById('live-clock').innerText = hours + ':' + minutes + ':' + seconds;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        const pairs = ["EUR/USD (OTC)", "GBP/USD (OTC)", "USD/JPY (OTC)", "AUD/CAD (OTC)", "EUR/JPY (OTC)", "USD/CHF (OTC)"];
+
+        function generateSignals() {
+            const now = new Date();
+            let currentMin = now.getMinutes();
+            let nextBlockMin = Math.ceil((currentMin + 1) / 5) * 5;
+            
+            let entryMin = nextBlockMin - 1;
+            let targetMin = nextBlockMin;
+            
+            let h = now.getHours();
+            let entryH = h, targetH = h;
+            
+            if (entryMin < 0) { entryMin += 60; entryH = (h - 1 + 24) % 24; }
+            if (targetMin >= 60) { targetMin -= 60; targetH = (h + 1) % 24; }
+
+            let timeEntryStr = String(entryH).padStart(2, '0') + ':' + String(entryMin).padStart(2, '0') + ':00';
+            let timeTargetStr = String(targetH).padStart(2, '0') + ':' + String(targetMin).padStart(2, '0') + ':00';
+
+            // Seleksyon 2 pè diferan
+            let p1 = pairs[Math.floor(Math.random() * pairs.length)];
+            let p2 = pairs[Math.floor(Math.random() * pairs.length)];
+            while (p1 === p2) { p2 = pairs[Math.floor(Math.random() * pairs.length)]; }
+
+            let act1 = Math.random() > 0.5 ? "BUY (ANAUT)" : "SELL (ANBA)";
+            let act2 = Math.random() > 0.5 ? "BUY (ANAUT)" : "SELL (ANBA)";
+
+            let html = `
+                <div class="signal-card">
+                    <div class="pair">${p1}</div>
+                    <div class="${act1.includes('BUY') ? 'action-buy' : 'action-sell'}">${act1}</div>
+                    <div class="details"><b>Moman pou rantre:</b> ${timeEntryStr}</div>
+                    <div class="details"><b>Pou bouji:</b> ${timeTargetStr}</div>
+                    <div class="details"><b>Probabilite:</b> 99%</div>
+                </div>
+                <div class="signal-card">
+                    <div class="pair">${p2}</div>
+                    <div class="${act2.includes('BUY') ? 'action-buy' : 'action-sell'}">${act2}</div>
+                    <div class="details"><b>Moman pou rantre:</b> ${timeEntryStr}</div>
+                    <div class="details"><b>Pou bouji:</b> ${timeTargetStr}</div>
+                    <div class="details"><b>Probabilite:</b> 99%</div>
+                </div>
+            `;
+            document.getElementById('signals-box').innerHTML = html;
+        }
+
+        generateSignals();
+        setInterval(generateSignals, 30000); // Rachi aktyalizasyon chak 30 segond
+    </script>
+</body>
+</html>
+"""
+
+HTML_ADMIN = """
+<!DOCTYPE html>
+<html lang="ht">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Administratè - Option Full Live</title>
+    <style>
+        body { background-color: #f4f4f4; color: #111; font-family: Arial, sans-serif; padding: 20px; }
+        .admin-card { background: white; padding: 20px; border-radius: 8px; border: 2px solid #e60000; max-width: 700px; margin: 0 auto; }
+        h2 { color: #e60000; }
+        .btn-gen { background: #e60000; color: white; border: none; padding: 10px 15px; margin: 5px; font-weight: bold; border-radius: 5px; cursor: pointer; }
+        .btn-gen:hover { background: #cc0000; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 14px; }
+        th { background-color: #e60000; color: white; }
+        .code-display { font-size: 20px; font-weight: bold; color: green; margin: 15px 0; background: #eafaf1; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="admin-card">
+        <h2>PANEL ADMINISTRATÈ (SÈL OU MENM)</h2>
+        <p>Klike sou bouton anba yo pou jeneré nouvo kòd pou kliyan yo:</p>
+        
+        <form action="/admin/generate" method="POST">
+            <button type="submit" name="plan_type" value="7" class="btn-gen">Jeneré Kòd 7 Jou (6 chif)</button>
+            <button type="submit" name="plan_type" value="15" class="btn-gen">Jeneré Kòd 15 Jou (7 chif)</button>
+            <button type="submit" name="plan_type" value="30" class="btn-gen">Jeneré Kòd 30 Jou (8 chif)</button>
+        </form>
+
+        {% if new_code %}
+            <div class="code-display">
+                NOUVO KÒD JENERÉ: <u>{{ new_code }}</u> (Plan {{ plan_days }} Jou)
+            </div>
+        {% endif %}
+
+        <h3>LIS TOUT KÒD YO NAN SISTÈM NAN:</h3>
+        <table>
+            <tr>
+                <th>Kòd Aksè</th>
+                <th>Plan (Jou)</th>
+                <th>Statit</th>
+                <th>Dat Ekspirasyon</th>
+            </tr>
+            {% for c in codes %}
+            <tr>
+                <td><b>{{ c[0] }}</b></td>
+                <td>{{ c[1] }} Jou</td>
+                <td>{{ c[2] }}</td>
+                <td>{{ c[5] if c[5] else 'Poko Aktivé' }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</body>
+</html>
+"""
+
+# --- ROUTES FLASK ---
+
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        session['user_name'] = request.form.get('name')
+        session['user_email'] = request.form.get('email')
+        return redirect(url_for('plans'))
+    return render_template_string(HTML_LOGIN)
 
 @app.route('/plans')
 def plans():
-    error = request.args.get('error')
-    return render_template('plans.html', ltc_address=LTC_ADDRESS, error=error)
-
-# PAJ KACHE POU OU KREYE KÒD POU KLIYAN YO
-@app.route('/admin-dashboard', methods=['GET', 'POST'])
-def admin_dashboard():
-    if request.method == 'POST':
-        admin_input = request.form.get('admin_code')
-        if admin_input == ADMIN_CODE:
-            session['is_admin'] = True
-
-    if not session.get('is_admin'):
-        return '''
-            <div style="text-align:center; padding-top:50px; font-family:sans-serif; background:#121212; color:white; height:100vh;">
-                <h2>Aksè Reservé pou Admin Sèlman 🔒</h2>
-                <form method="POST">
-                    <input type="password" name="admin_code" placeholder="Antre Kòd Admin W la" style="padding:10px; font-size:16px;" required>
-                    <button type="submit" style="padding:10px 20px; background:#28a745; color:white; border:none; font-size:16px;">Antre</button>
-                </form>
-            </div>
-        '''
-
-    msg = None
-    if request.method == 'POST' and 'new_code' in request.form:
-        new_code = request.form.get('new_code').strip().upper()
-        days = int(request.form.get('days'))
-        
-        conn = sqlite3.connect('users.db')
-        c = conn.cursor()
-        try:
-            c.execute("INSERT INTO access_codes (code, days, status) VALUES (?, ?, 'unused')", (new_code, days))
-            conn.commit()
-            msg = f"✅ Kòd '{new_code}' pou {days} jou kreye ak siksè!"
-        except Exception as e:
-            msg = "❌ Kòd sa a te deja egziste! Chwazi yon lòt non kòd."
-        conn.close()
-
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT code, days, status, expire_date FROM access_codes")
-    codes_list = c.fetchall()
-    conn.close()
-
-    return render_template('admin.html', msg=msg, codes_list=codes_list)
+    if 'user_email' not in session:
+        return redirect(url_for('login'))
+    return render_template_string(HTML_PLANS, ltc_address=LTC_ADDRESS, error=request.args.get('error'))
 
 @app.route('/verify-code', methods=['POST'])
 def verify_code():
-    code = request.form.get('code', '').strip().upper()
-    now = datetime.datetime.now()
+    code_entered = request.form.get('access_code').strip()
+    email = session.get('user_email')
 
-    if code == ADMIN_CODE:
-        session['access_code'] = code
-        session['is_admin'] = True
-        return redirect(url_for('signals'))
-
-    conn = sqlite3.connect('users.db')
+    conn = sqlite3.connect('database.db')
     c = conn.cursor()
-    c.execute("SELECT days, start_date, expire_date, status FROM access_codes WHERE code=?", (code,))
+    c.execute("SELECT code, days, status, expiration_date FROM access_codes WHERE code = ?", (code_entered,))
     row = c.fetchone()
 
     if not row:
         conn.close()
-        return redirect(url_for('plans', error="Kòd sa a pa egziste! Antre yon bon kòd."))
+        return redirect(url_for('plans', error="Kòd sa a pa egziste! Antre yon kòd ki valib."))
 
-    days, start_date, expire_date, status = row
+    code, days, status, expiration_date = row
+    now = datetime.now()
 
     if status == 'unused':
-        exp_date = now + datetime.timedelta(days=days)
-        c.execute("UPDATE access_codes SET start_date=?, expire_date=?, status='active' WHERE code=?",
-                  (now.strftime("%Y-%m-%d %H:%M:%S"), exp_date.strftime("%Y-%m-%d %H:%M:%S"), code))
+        # Aktivasyon kòd la pou premye fwa
+        exp_date = now + timedelta(days=days)
+        c.execute("UPDATE access_codes SET status = 'active', used_by_email = ?, activation_date = ?, expiration_date = ? WHERE code = ?", 
+                  (email, now, exp_date, code))
         conn.commit()
         conn.close()
         session['access_code'] = code
         return redirect(url_for('signals'))
 
     elif status == 'active':
-        exp_dt = datetime.datetime.strptime(expire_date, "%Y-%m-%d %H:%M:%S")
-        if now > exp_dt:
-            c.execute("UPDATE access_codes SET status='expired' WHERE code=?", (code,))
+        exp_datetime = datetime.strptime(expiration_date, '%Y-%m-%d %H:%M:%S.%f')
+        if now > exp_datetime:
+            c.execute("UPDATE access_codes SET status = 'expired' WHERE code = ?", (code,))
             conn.commit()
             conn.close()
-            return render_template('expired.html', message=f"{days} jou abònman w lan fini nèt! Ranouvle plan w pou w gen aksè ankò.")
+            return redirect(url_for('plans', error="Kòd aksè sa a ekspire! Tanpri achte yon nouvo plan."))
         else:
             conn.close()
             session['access_code'] = code
             return redirect(url_for('signals'))
 
-    elif status == 'expired':
+    else:
         conn.close()
-        return render_template('expired.html', message="Kòd sa a fin ekspire! Li pa ka itilize ankò.")
-
-    conn.close()
-    return redirect(url_for('plans', error="Erè nan verifikasyon kòd la."))
+        return redirect(url_for('plans', error="Kòd sa a ekspire deja!"))
 
 @app.route('/signals')
 def signals():
-    code = session.get('access_code')
-    if not code:
+    if 'access_code' not in session:
         return redirect(url_for('plans'))
     
-    now = datetime.datetime.now()
-    pairs = ["EUR/USD (OTC) 99%", "GBP/USD (OTC) 99%", "USD/JPY (OTC) 98%", "AUD/USD (OTC) 99%"]
+    # Vérifikasyon si kòd la poko ekspire pandan l ap gade sinyal yo
+    code = session['access_code']
+    conn = sqlite3.connect('database.db')
+    c = conn.cursor()
+    c.execute("SELECT expiration_date FROM access_codes WHERE code = ?", (code,))
+    row = c.fetchone()
+    conn.close()
+
+    if row and row[0]:
+        exp_datetime = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S.%f')
+        if datetime.now() > exp_datetime:
+            session.pop('access_code', None)
+            return redirect(url_for('plans', error="Aksè ou sa a ekspire kounye a!"))
+
+    return render_template_string(HTML_SIGNALS)
+
+# --- ROUTE ADMINISTRATÈ ---
+
+@app.route('/admin', methods=['GET'])
+def admin():
+    conn = sqlite3.connect('database.db')
+    c = conn.cursor()
+    c.execute("SELECT code, days, status, used_by_email, activation_date, expiration_date FROM access_codes ORDER BY ROWID DESC")
+    codes = c.fetchall()
+    conn.close()
+    return render_template_string(HTML_ADMIN, codes=codes)
+
+@app.route('/admin/generate', methods=['POST'])
+def admin_generate():
+    plan_days = int(request.form.get('plan_type'))
     
-    selected_pair = random.choice(pairs)
-    direction = random.choice(["CALL 🟢 (BUY)", "PUT 🔴 (SELL)"])
+    if plan_days == 7:
+        new_code = generate_random_code(6)
+    elif plan_days == 15:
+        new_code = generate_random_code(7)
+    else:
+        new_code = generate_random_code(8)
+
+    conn = sqlite3.connect('database.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO access_codes (code, days, status) VALUES (?, ?, 'unused')", (new_code, plan_days))
+    conn.commit()
     
-    next_minute = (now + datetime.timedelta(minutes=1)).strftime("%H:%M:00")
-    entry_time = (now + datetime.timedelta(minutes=2)).strftime("%H:%M:00")
-    
-    return render_template('signals.html', 
-                           pair=selected_pair, 
-                           direction=direction, 
-                           signal_time=next_minute, 
-                           entry_time=entry_time,
-                           current_time=now.strftime("%H:%M:%S"))
+    c.execute("SELECT code, days, status, used_by_email, activation_date, expiration_date FROM access_codes ORDER BY ROWID DESC")
+    codes = c.fetchall()
+    conn.close()
+
+    return render_template_string(HTML_ADMIN, codes=codes, new_code=new_code, plan_days=plan_days)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
