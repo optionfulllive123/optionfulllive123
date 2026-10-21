@@ -8,13 +8,12 @@ from flask import Flask, render_template_string, request, redirect, url_for, ses
 app = Flask(__name__)
 app.secret_key = "option_full_live_secret_key_2026"
 
-ADMIN_CODE = "ADMIN2026"  # Kòd sekrè pa w pou w ka rantre nan /admin
+ADMIN_CODE = "ADMIN2026"
 LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4kqyjmc8gmekxu3s4z"
 
 def init_db():
     conn = sqlite3.connect('database.db')
     c = conn.cursor()
-    # Tab pou Kòd Aksè yo
     c.execute('''
         CREATE TABLE IF NOT EXISTS access_codes (
             code TEXT PRIMARY KEY,
@@ -30,7 +29,6 @@ def init_db():
 
 init_db()
 
-# Fonksyon pou jenere yon kòd aleatwa
 def generate_random_code(length):
     return ''.join(random.choices(string.digits, k=length))
 
@@ -55,7 +53,7 @@ HTML_LOGIN = """
 <body>
     <div class="card">
         <h2>OPTION FULL LIVE</h2>
-        <p style="color: #555;">Antre ensfòmasyon ou yo pou w ka kontinye ale nan plan d'abonman yo:</p>
+        <p style="color: #555;">Antre enfòmasyon ou yo pou w ka kontinye ale nan plan d'abonman yo:</p>
         <form action="/" method="POST">
             <input type="text" name="name" placeholder="Non ou" required>
             <input type="email" name="email" placeholder="Imèl ou" required>
@@ -97,8 +95,8 @@ HTML_PLANS = """
             <div class="plan-title">PLAN 7 JOU</div>
             <div class="price">$59.99 USD</div>
             <p style="font-size: 13px; color: #666;">Aksè ak Kòd 6 chif pou 7 jou otomatik</p>
-            <div class="ltc-box" id="ltc1">{{ ltc_address }}</div>
-            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
+            <div class="ltc-box">{{ ltc_address }}</div>
+            <button class="btn-copy" onclick="copyAddress1()">KOPYE ADRÈS LTC</button>
         </div>
 
         <!-- Plan 15 Jou -->
@@ -107,7 +105,7 @@ HTML_PLANS = """
             <div class="price">$119.99 USD</div>
             <p style="font-size: 13px; color: #666;">Aksè ak Kòd 7 chif pou 15 jou otomatik</p>
             <div class="ltc-box">{{ ltc_address }}</div>
-            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
+            <button class="btn-copy" onclick="copyAddress2()">KOPYE ADRÈS LTC</button>
         </div>
 
         <!-- Plan 30 Jou -->
@@ -116,7 +114,7 @@ HTML_PLANS = """
             <div class="price">$199.99 USD</div>
             <p style="font-size: 13px; color: #666;">Aksè ak Kòd 8 chif pou 30 jou otomatik</p>
             <div class="ltc-box">{{ ltc_address }}</div>
-            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
+            <button class="btn-copy" onclick="copyAddress3()">KOPYE ADRÈS LTC</button>
         </div>
 
         <!-- Rantre Kòd Aksè -->
@@ -133,10 +131,12 @@ HTML_PLANS = """
     </div>
 
     <script>
-        function copyAddress() {
+        function copyAddress1() {
             navigator.clipboard.writeText("{{ ltc_address }}");
             alert("Adrès LTC an kopye ak siksè!");
         }
+        function copyAddress2() { copyAddress1(); }
+        function copyAddress3() { copyAddress1(); }
     </script>
 </body>
 </html>
@@ -176,7 +176,7 @@ HTML_SIGNALS = """
     <p style="font-size: 13px;">Analiz Teknik & Fondamantal (Timeframe 1-Minit)</p>
 
     <div class="signals-container" id="signals-box">
-        <!-- Sinyal yo ap chaje otomatikman ak JavaScript -->
+        <!-- Sinyal fiks pou blòk 5 minit lan -->
     </div>
 
     <div class="footer-info">
@@ -196,52 +196,72 @@ HTML_SIGNALS = """
 
         const pairs = ["EUR/USD (OTC)", "GBP/USD (OTC)", "USD/JPY (OTC)", "AUD/CAD (OTC)", "EUR/JPY (OTC)", "USD/CHF (OTC)"];
 
-        function generateSignals() {
+        // Fonksyon ki kreye yon nimewo idantifyan ki baze s sou blòk 5 minit la (konsa li pap janm chanje pandan 5 minit yo)
+        function getDeterministicSignals() {
             const now = new Date();
-            let currentMin = now.getMinutes();
-            let nextBlockMin = Math.ceil((currentMin + 1) / 5) * 5;
-            
-            let entryMin = nextBlockMin - 1;
-            let targetMin = nextBlockMin;
-            
             let h = now.getHours();
-            let entryH = h, targetH = h;
+            let m = now.getMinutes();
+            let blockIndex = Math.floor(m / 5); // Chanje sèlman chak 5 minit egzak
             
-            if (entryMin < 0) { entryMin += 60; entryH = (h - 1 + 24) % 24; }
-            if (targetMin >= 60) { targetMin -= 60; targetH = (h + 1) % 24; }
+            // Itilize tan an kòm yon "seed" pou nimewo yo pa chanje pandan 5 minit yo
+            let seed = h * 100 + blockIndex;
+            
+            // Fo rafinman pou chwazi 2 pè ki toujou rete menm jan an pandan tout 5 minit sa yo
+            let idx1 = seed % pairs.length;
+            let idx2 = (seed + 3) % pairs.length;
+            if (idx1 === idx2) idx2 = (idx2 + 1) % pairs.length;
+
+            let p1 = pairs[idx1];
+            let p2 = pairs[idx2];
+
+            // Detèmine Buy oswa Sell baze sou seed la pou l pa janm fè aza oswa chanje tèt li
+            let act1 = (seed % 2 === 0) ? "BUY (ANAUT)" : "SELL (ANBA)";
+            let act2 = (seed % 3 === 0) ? "SELL (ANBA)" : "BUY (ANAUT)";
+
+            let nextBlockMin = (blockIndex + 1) * 5;
+            let targetH = h;
+            let targetMin = nextBlockMin;
+            if (targetMin >= 60) {
+                targetMin = 0;
+                targetH = (h + 1) % 24;
+            }
+            let entryMin = targetMin - 1;
+            let entryH = h;
+            if (entryMin < 0) {
+                entryMin = 59;
+                entryH = (h - 1 + 24) % 24;
+            }
 
             let timeEntryStr = String(entryH).padStart(2, '0') + ':' + String(entryMin).padStart(2, '0') + ':00';
             let timeTargetStr = String(targetH).padStart(2, '0') + ':' + String(targetMin).padStart(2, '0') + ':00';
 
-            // Seleksyon 2 pè diferan
-            let p1 = pairs[Math.floor(Math.random() * pairs.length)];
-            let p2 = pairs[Math.floor(Math.random() * pairs.length)];
-            while (p1 === p2) { p2 = pairs[Math.floor(Math.random() * pairs.length)]; }
+            return { p1, act1, p2, act2, timeEntryStr, timeTargetStr };
+        }
 
-            let act1 = Math.random() > 0.5 ? "BUY (ANAUT)" : "SELL (ANBA)";
-            let act2 = Math.random() > 0.5 ? "BUY (ANAUT)" : "SELL (ANBA)";
-
+        function displaySignals() {
+            let sig = getDeterministicSignals();
             let html = `
                 <div class="signal-card">
-                    <div class="pair">${p1}</div>
-                    <div class="${act1.includes('BUY') ? 'action-buy' : 'action-sell'}">${act1}</div>
-                    <div class="details"><b>Moman pou rantre:</b> ${timeEntryStr}</div>
-                    <div class="details"><b>Pou bouji:</b> ${timeTargetStr}</div>
+                    <div class="pair">${sig.p1}</div>
+                    <div class="${sig.act1.includes('BUY') ? 'action-buy' : 'action-sell'}">${sig.act1}</div>
+                    <div class="details"><b>Moman pou rantre:</b> ${sig.timeEntryStr}</div>
+                    <div class="details"><b>Pou bouji:</b> ${sig.timeTargetStr}</div>
                     <div class="details"><b>Probabilite:</b> 99%</div>
                 </div>
                 <div class="signal-card">
-                    <div class="pair">${p2}</div>
-                    <div class="${act2.includes('BUY') ? 'action-buy' : 'action-sell'}">${act2}</div>
-                    <div class="details"><b>Moman pou rantre:</b> ${timeEntryStr}</div>
-                    <div class="details"><b>Pou bouji:</b> ${timeTargetStr}</div>
+                    <div class="pair">${sig.p2}</div>
+                    <div class="${sig.act2.includes('BUY') ? 'action-buy' : 'action-sell'}">${sig.act2}</div>
+                    <div class="details"><b>Moman pou rantre:</b> ${sig.timeEntryStr}</div>
+                    <div class="details"><b>Pou bouji:</b> ${sig.timeTargetStr}</div>
                     <div class="details"><b>Probabilite:</b> 99%</div>
                 </div>
             `;
             document.getElementById('signals-box').innerHTML = html;
         }
 
-        generateSignals();
-        setInterval(generateSignals, 30000); // Rachi aktyalizasyon chak 30 segond
+        displaySignals();
+        // Tcheke chak segond men li pap chanje anyen jiskaske 5 minit yo pase nèt
+        setInterval(displaySignals, 1000);
     </script>
 </body>
 </html>
@@ -339,7 +359,6 @@ def verify_code():
     now = datetime.now()
 
     if status == 'unused':
-        # Aktivasyon kòd la pou premye fwa
         exp_date = now + timedelta(days=days)
         c.execute("UPDATE access_codes SET status = 'active', used_by_email = ?, activation_date = ?, expiration_date = ? WHERE code = ?", 
                   (email, now, exp_date, code))
@@ -369,7 +388,6 @@ def signals():
     if 'access_code' not in session:
         return redirect(url_for('plans'))
     
-    # Vérifikasyon si kòd la poko ekspire pandan l ap gade sinyal yo
     code = session['access_code']
     conn = sqlite3.connect('database.db')
     c = conn.cursor()
@@ -384,8 +402,6 @@ def signals():
             return redirect(url_for('plans', error="Aksè ou sa a ekspire kounye a!"))
 
     return render_template_string(HTML_SIGNALS)
-
-# --- ROUTE ADMINISTRATÈ ---
 
 @app.route('/admin', methods=['GET'])
 def admin():
