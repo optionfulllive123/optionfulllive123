@@ -1,7 +1,7 @@
 import os
-import sqlite3
 import random
 import string
+import sqlite3
 from datetime import datetime, timedelta
 from flask import Flask, render_template_string, request, redirect, url_for, session
 
@@ -11,26 +11,33 @@ app.secret_key = "option_full_live_secret_key_2026"
 ADMIN_CODE = "ADMIN2026"
 LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z"
 
+# ==========================================
+# 1. KREYASYON BAZ DE DONE (DATABASE)
+# ==========================================
 def init_db():
     conn = sqlite3.connect('database.db')
     c = conn.cursor()
     c.execute('''
-        CREATE TABLE IF NOT EXISTS codes (
+        CREATE TABLE IF NOT EXISTS access_codes (
             code TEXT PRIMARY KEY,
             days INTEGER,
             status TEXT DEFAULT 'unused',
-            activated_at TEXT,
+            used_by_email TEXT,
+            activation_date TEXT,
             expiration_date TEXT
         )
     ''')
     conn.commit()
     conn.close()
 
-# Mete liy sa a dirèkteman anba fonksyon an:
 init_db()
 
+def generate_random_code(length):
+    return ''.join(random.choices(string.digits, k=length))
 
-# --- HTML TEMPLATES ---
+# ==========================================
+# 2. HTML TEMPLATES (PAJ YO)
+# ==========================================
 
 HTML_LOGIN = """
 <!DOCTYPE html>
@@ -94,7 +101,7 @@ HTML_PLANS = """
             <div class="price">$59.99 USD</div>
             <p style="font-size: 13px; color: #666;">Aksè ak Kòd 6 chif pou 7 jou otomatik</p>
             <div class="ltc-box">{{ ltc_address }}</div>
-            <button class="btn-copy" onclick="copyAddress1()">KOPYE ADRÈS LTC</button>
+            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
         </div>
 
         <!-- Plan 15 Jou -->
@@ -103,7 +110,7 @@ HTML_PLANS = """
             <div class="price">$119.99 USD</div>
             <p style="font-size: 13px; color: #666;">Aksè ak Kòd 7 chif pou 15 jou otomatik</p>
             <div class="ltc-box">{{ ltc_address }}</div>
-            <button class="btn-copy" onclick="copyAddress2()">KOPYE ADRÈS LTC</button>
+            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
         </div>
 
         <!-- Plan 30 Jou -->
@@ -112,7 +119,7 @@ HTML_PLANS = """
             <div class="price">$199.99 USD</div>
             <p style="font-size: 13px; color: #666;">Aksè ak Kòd 8 chif pou 30 jou otomatik</p>
             <div class="ltc-box">{{ ltc_address }}</div>
-            <button class="btn-copy" onclick="copyAddress3()">KOPYE ADRÈS LTC</button>
+            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
         </div>
 
         <!-- Rantre Kòd Aksè -->
@@ -129,12 +136,10 @@ HTML_PLANS = """
     </div>
 
     <script>
-        function copyAddress1() {
+        function copyAddress() {
             navigator.clipboard.writeText("{{ ltc_address }}");
             alert("Adrès LTC an kopye ak siksè!");
         }
-        function copyAddress2() { copyAddress1(); }
-        function copyAddress3() { copyAddress1(); }
     </script>
 </body>
 </html>
@@ -173,12 +178,11 @@ HTML_SIGNALS = """
     <h2 style="color: #e60000; margin-top: 25px;">2 NOUVO SINYAL (CHAK 5 MINIT)</h2>
     <p style="font-size: 13px;">Analiz Teknik & Fondamantal (Timeframe 1-Minit)</p>
 
-    <div class="signals-container" id="signals-box">
-        <!-- Sinyal fiks pou blòk 5 minit lan -->
-    </div>
+    <div class="signals-container" id="signals-box"></div>
 
     <div class="footer-info">
         <p>⚠️ Antre presizyon a lekzak tan yo montre a (Egzanp: Antre a 1h19.00 pou bouji 1h20.00 an).</p>
+        <p><a href="/plans" style="color: #e60000;">Tounen nan paj akèy / Soti</a></p>
     </div>
 
     <script>
@@ -194,17 +198,13 @@ HTML_SIGNALS = """
 
         const pairs = ["EUR/USD (OTC)", "GBP/USD (OTC)", "USD/JPY (OTC)", "AUD/CAD (OTC)", "EUR/JPY (OTC)", "USD/CHF (OTC)"];
 
-        // Fonksyon ki kreye yon nimewo idantifyan ki baze s sou blòk 5 minit la (konsa li pap janm chanje pandan 5 minit yo)
         function getDeterministicSignals() {
             const now = new Date();
             let h = now.getHours();
             let m = now.getMinutes();
-            let blockIndex = Math.floor(m / 5); // Chanje sèlman chak 5 minit egzak
-            
-            // Itilize tan an kòm yon "seed" pou nimewo yo pa chanje pandan 5 minit yo
+            let blockIndex = Math.floor(m / 5);
             let seed = h * 100 + blockIndex;
             
-            // Fo rafinman pou chwazi 2 pè ki toujou rete menm jan an pandan tout 5 minit sa yo
             let idx1 = seed % pairs.length;
             let idx2 = (seed + 3) % pairs.length;
             if (idx1 === idx2) idx2 = (idx2 + 1) % pairs.length;
@@ -212,7 +212,6 @@ HTML_SIGNALS = """
             let p1 = pairs[idx1];
             let p2 = pairs[idx2];
 
-            // Detèmine Buy oswa Sell baze sou seed la pou l pa janm fè aza oswa chanje tèt li
             let act1 = (seed % 2 === 0) ? "BUY (ANAUT)" : "SELL (ANBA)";
             let act2 = (seed % 3 === 0) ? "SELL (ANBA)" : "BUY (ANAUT)";
 
@@ -258,7 +257,6 @@ HTML_SIGNALS = """
         }
 
         displaySignals();
-        // Tcheke chak segond men li pap chanje anyen jiskaske 5 minit yo pase nèt
         setInterval(displaySignals, 1000);
     </script>
 </body>
@@ -289,7 +287,7 @@ HTML_ADMIN = """
         <h2>PANEL ADMINISTRATÈ (SÈL OU MENM)</h2>
         <p>Klike sou bouton anba yo pou jeneré nouvo kòd pou kliyan yo:</p>
         
-        <form action="/admin/generate" method="POST">
+        <form action="/admin/generate?code=ADMIN2026" method="POST">
             <button type="submit" name="plan_type" value="7" class="btn-gen">Jeneré Kòd 7 Jou (6 chif)</button>
             <button type="submit" name="plan_type" value="15" class="btn-gen">Jeneré Kòd 15 Jou (7 chif)</button>
             <button type="submit" name="plan_type" value="30" class="btn-gen">Jeneré Kòd 30 Jou (8 chif)</button>
@@ -307,6 +305,7 @@ HTML_ADMIN = """
                 <th>Kòd Aksè</th>
                 <th>Plan (Jou)</th>
                 <th>Statit</th>
+                <th>Imèl Itilizatè</th>
                 <th>Dat Ekspirasyon</th>
             </tr>
             {% for c in codes %}
@@ -314,6 +313,7 @@ HTML_ADMIN = """
                 <td><b>{{ c[0] }}</b></td>
                 <td>{{ c[1] }} Jou</td>
                 <td>{{ c[2] }}</td>
+                <td>{{ c[3] if c[3] else '-' }}</td>
                 <td>{{ c[5] if c[5] else 'Poko Aktivé' }}</td>
             </tr>
             {% endfor %}
@@ -323,7 +323,9 @@ HTML_ADMIN = """
 </html>
 """
 
-# --- ROUTES FLASK ---
+# ==========================================
+# 3. FLASK ROUTES
+# ==========================================
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
@@ -341,78 +343,53 @@ def plans():
 
 @app.route('/verify-code', methods=['POST'])
 def verify_code():
-    code_entered = request.form.get('access_code')
+    code_entered = request.form.get('access_code', '').strip()
+    email = session.get('user_email', 'unknown@user.com')
     
     conn = sqlite3.connect('database.db')
     c = conn.cursor()
-    c.execute("SELECT code, days, status, expiration_date FROM codes WHERE code = ?", (code_entered,))
+    c.execute("SELECT code, days, status, expiration_date FROM access_codes WHERE code = ?", (code_entered,))
     row = c.fetchone()
     
     if not row:
         conn.close()
-        return redirect(url_for('plans'))
+        return redirect(url_for('plans', error="Kòd sa a pa egziste nan sistèm nan!"))
         
     code, days, status, expiration_date = row
     now = datetime.now()
     
-    # Si se premye fwa kliyan an ap itilize kòd la
+    # Si se premye fwa kliyan an ap itilize kòd la (unused)
     if status == 'unused':
-        # Kalkile dat ekspirasyon fiks (7, 15 oswa 30 jou) depi premye aktivasyon
         new_expiration = now + timedelta(days=int(days))
+        now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+        exp_str = new_expiration.strftime('%Y-%m-%d %H:%M:%S')
         
         c.execute("""
-            UPDATE codes 
-            SET status = 'active', activated_at = ?, expiration_date = ? 
+            UPDATE access_codes 
+            SET status = 'active', used_by_email = ?, activation_date = ?, expiration_date = ? 
             WHERE code = ?
-        """, (now.strftime('%Y-%m-%d %H:%M:%S'), new_expiration.strftime('%Y-%m-%d %H:%M:%S'), code_entered))
+        """, (email, now_str, exp_str, code_entered))
         conn.commit()
         
-        # Enregistre kòd la nan sesyon kliyan an
         session['access_code'] = code_entered
         conn.close()
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('signals'))
         
-    # Si kòd la te deja aktivé, tcheke si 7/15/30 jou yo pa ankò depase
+    # Si kòd la te deja aktive, tcheke si jou yo poko pase
     if status == 'active' and expiration_date:
         exp_date = datetime.strptime(expiration_date, '%Y-%m-%d %H:%M:%S')
         if now <= exp_date:
             session['access_code'] = code_entered
             conn.close()
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('signals'))
         else:
-            c.execute("UPDATE codes SET status = 'expired' WHERE code = ?", (code_entered,))
+            c.execute("UPDATE access_codes SET status = 'expired' WHERE code = ?", (code_entered,))
             conn.commit()
             conn.close()
-            return redirect(url_for('plans'))
+            return redirect(url_for('plans', error="Kòd aksè sa a ekspire! Tan an fini."))
             
     conn.close()
-    return redirect(url_for('plans'))
-
-
-    if status == 'unused':
-        exp_date = now + timedelta(days=days)
-        c.execute("UPDATE access_codes SET status = 'active', used_by_email = ?, activation_date = ?, expiration_date = ? WHERE code = ?", 
-                  (email, now, exp_date, code))
-        conn.commit()
-        conn.close()
-        session['access_code'] = code
-        return redirect(url_for('signals'))
-
-    elif status == 'active':
-        exp_datetime = datetime.strptime(expiration_date, '%Y-%m-%d %H:%M:%S.%f')
-        if now > exp_datetime:
-            c.execute("UPDATE access_codes SET status = 'expired' WHERE code = ?", (code,))
-            conn.commit()
-            conn.close()
-            return redirect(url_for('plans', error="Kòd aksè sa a ekspire! Tanpri achte yon nouvo plan."))
-        else:
-            conn.close()
-            session['access_code'] = code
-            return redirect(url_for('signals'))
-
-    else:
-        conn.close()
-        return redirect(url_for('plans', error="Kòd sa a ekspire deja!"))
+    return redirect(url_for('plans', error="Kòd sa a pa ka itilize ankò."))
 
 @app.route('/signals')
 def signals():
@@ -427,24 +404,32 @@ def signals():
     conn.close()
 
     if row and row[0]:
-        exp_datetime = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S.%f')
+        exp_datetime = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
         if datetime.now() > exp_datetime:
             session.pop('access_code', None)
-            return redirect(url_for('plans', error="Aksè ou sa a ekspire kounye a!"))
+            return redirect(url_for('plans', error="Aksè ou a ekspire kounye a!"))
 
     return render_template_string(HTML_SIGNALS)
 
 @app.route('/admin', methods=['GET'])
 def admin():
+    admin_pass = request.args.get('code')
+    if admin_pass != ADMIN_CODE:
+        return "Aksè Refize! Tanpri antre kòd admin la kòrèkteman nan adrès la (Egzanp: /admin?code=ADMIN2026)"
+        
     conn = sqlite3.connect('database.db')
     c = conn.cursor()
     c.execute("SELECT code, days, status, used_by_email, activation_date, expiration_date FROM access_codes ORDER BY ROWID DESC")
     codes = c.fetchall()
     conn.close()
-    return render_template_string(HTML_ADMIN, codes=codes)
+    return render_template_string(HTML_ADMIN, codes=codes, new_code=None, plan_days=None)
 
 @app.route('/admin/generate', methods=['POST'])
 def admin_generate():
+    admin_pass = request.args.get('code')
+    if admin_pass != ADMIN_CODE:
+        return "Aksè Refize!"
+
     plan_days = int(request.form.get('plan_type'))
     
     if plan_days == 7:
