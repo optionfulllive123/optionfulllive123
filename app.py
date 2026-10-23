@@ -15,22 +15,20 @@ def init_db():
     conn = sqlite3.connect('database.db')
     c = conn.cursor()
     c.execute('''
-        CREATE TABLE IF NOT EXISTS access_codes (
+        CREATE TABLE IF NOT EXISTS codes (
             code TEXT PRIMARY KEY,
             days INTEGER,
             status TEXT DEFAULT 'unused',
-            used_by_email TEXT,
-            activation_date TIMESTAMP,
-            expiration_date TIMESTAMP
+            activated_at TEXT,
+            expiration_date TEXT
         )
     ''')
     conn.commit()
     conn.close()
 
+# Mete liy sa a dirèkteman anba fonksyon an:
 init_db()
 
-def generate_random_code(length):
-    return ''.join(random.choices(string.digits, k=length))
 
 # --- HTML TEMPLATES ---
 
