@@ -9,7 +9,7 @@ app = Flask(__name__)
 app.secret_key = "option_full_live_secret_key_2026"
 
 ADMIN_CODE = "ADMIN2026"
-LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4kqyjmc8gmekxu3s4z"
+LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z"
 
 def init_db():
     conn = sqlite3.connect('database.db')
@@ -343,20 +343,53 @@ def plans():
 
 @app.route('/verify-code', methods=['POST'])
 def verify_code():
-    code_entered = request.form.get('access_code').strip()
-    email = session.get('user_email')
-
+    code_entered = request.form.get('access_code')
+    
     conn = sqlite3.connect('database.db')
     c = conn.cursor()
-    c.execute("SELECT code, days, status, expiration_date FROM access_codes WHERE code = ?", (code_entered,))
+    c.execute("SELECT code, days, status, expiration_date FROM codes WHERE code = ?", (code_entered,))
     row = c.fetchone()
-
+    
     if not row:
         conn.close()
-        return redirect(url_for('plans', error="Kòd sa a pa egziste! Antre yon kòd ki valib."))
-
+        return redirect(url_for('plans'))
+        
     code, days, status, expiration_date = row
     now = datetime.now()
+    
+    # Si se premye fwa kliyan an ap itilize kòd la
+    if status == 'unused':
+        # Kalkile dat ekspirasyon fiks (7, 15 oswa 30 jou) depi premye aktivasyon
+        new_expiration = now + timedelta(days=int(days))
+        
+        c.execute("""
+            UPDATE codes 
+            SET status = 'active', activated_at = ?, expiration_date = ? 
+            WHERE code = ?
+        """, (now.strftime('%Y-%m-%d %H:%M:%S'), new_expiration.strftime('%Y-%m-%d %H:%M:%S'), code_entered))
+        conn.commit()
+        
+        # Enregistre kòd la nan sesyon kliyan an
+        session['access_code'] = code_entered
+        conn.close()
+        return redirect(url_for('dashboard'))
+        
+    # Si kòd la te deja aktivé, tcheke si 7/15/30 jou yo pa ankò depase
+    if status == 'active' and expiration_date:
+        exp_date = datetime.strptime(expiration_date, '%Y-%m-%d %H:%M:%S')
+        if now <= exp_date:
+            session['access_code'] = code_entered
+            conn.close()
+            return redirect(url_for('dashboard'))
+        else:
+            c.execute("UPDATE codes SET status = 'expired' WHERE code = ?", (code_entered,))
+            conn.commit()
+            conn.close()
+            return redirect(url_for('plans'))
+            
+    conn.close()
+    return redirect(url_for('plans'))
+
 
     if status == 'unused':
         exp_date = now + timedelta(days=days)
