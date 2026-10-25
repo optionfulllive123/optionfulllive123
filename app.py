@@ -90,7 +90,7 @@ HTML_PLANS = """
         .plan-card { background: #fff; border: 2px solid #e60000; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
         .plan-title { color: #e60000; font-size: 22px; font-weight: bold; }
         .price { font-size: 20px; margin: 10px 0; color: #333; }
-        .ltc-box { background: #f1f1f1; padding: 10px; border-radius: 6px; font-size: 12px; word-break: break-all; margin: 10px 0; border: 1px dashed #e60000; user-select: all; }
+        .ltc-box { background: #f1f1f1; padding: 10px; border-radius: 6px; font-size: 12px; word-break: break-all; margin: 10px 0; border: 1px dashed #e60000; user-select: all; text-transform: uppercase; }
         .btn-copy { background: #e60000; color: #fff; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         .access-form { margin-top: 30px; background: #fff; padding: 20px; border-radius: 10px; border: 2px solid #111; }
         input { padding: 12px; width: 80%; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 10px; font-size: 16px; text-align: center; }
