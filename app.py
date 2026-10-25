@@ -1,7 +1,7 @@
 import os
 import random
 import string
-import sqlite3
+import psycopg2
 from datetime import datetime, timedelta
 from flask import Flask, render_template_string, request, redirect, url_for, session
 
@@ -11,11 +11,18 @@ app.secret_key = "option_full_live_secret_key_2026"
 ADMIN_CODE = "ADMIN2026"
 LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z"
 
+# Pran lyen baz done a nan Render Environment Variables
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+def get_db_connection():
+    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    return conn
+
 # ==========================================
 # 1. KREYASYON BAZ DE DONE (DATABASE)
 # ==========================================
 def init_db():
-    conn = sqlite3.connect('database.db')
+    conn = get_db_connection()
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS access_codes (
@@ -28,6 +35,7 @@ def init_db():
         )
     ''')
     conn.commit()
+    c.close()
     conn.close()
 
 init_db()
@@ -82,7 +90,7 @@ HTML_PLANS = """
         .plan-card { background: #fff; border: 2px solid #e60000; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
         .plan-title { color: #e60000; font-size: 22px; font-weight: bold; }
         .price { font-size: 20px; margin: 10px 0; color: #333; }
-        .ltc-box { background: #f1f1f1; padding: 10px; border-radius: 6px; font-size: 12px; word-break: break-all; margin: 10px 0; border: 1px dashed #e60000; }
+        .ltc-box { background: #f1f1f1; padding: 10px; border-radius: 6px; font-size: 12px; word-break: break-all; margin: 10px 0; border: 1px dashed #e60000; user-select: all; }
         .btn-copy { background: #e60000; color: #fff; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         .access-form { margin-top: 30px; background: #fff; padding: 20px; border-radius: 10px; border: 2px solid #111; }
         input { padding: 12px; width: 80%; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 10px; font-size: 16px; text-align: center; }
@@ -100,8 +108,8 @@ HTML_PLANS = """
             <div class="plan-title">PLAN 7 JOU</div>
             <div class="price">$59.99 USD</div>
             <p style="font-size: 13px; color: #666;">Aksè ak Kòd 6 chif pou 7 jou otomatik</p>
-            <div class="ltc-box">{{ ltc_address }}</div>
-            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
+            <div class="ltc-box" id="ltc-addr-1">{{ ltc_address }}</div>
+            <button class="btn-copy" onclick="copyAddress('ltc-addr-1')">KOPYE ADRÈS LTC</button>
         </div>
 
         <!-- Plan 15 Jou -->
@@ -109,17 +117,17 @@ HTML_PLANS = """
             <div class="plan-title">PLAN 15 JOU</div>
             <div class="price">$119.99 USD</div>
             <p style="font-size: 13px; color: #666;">Aksè ak Kòd 7 chif pou 15 jou otomatik</p>
-            <div class="ltc-box">{{ ltc_address }}</div>
-            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
+            <div class="ltc-box" id="ltc-addr-2">{{ ltc_address }}</div>
+            <button class="btn-copy" onclick="copyAddress('ltc-addr-2')">KOPYE ADRÈS LTC</button>
         </div>
 
-        <!-- Plan 30 Jou -->
+        <!-- Plan 30 Jou ($233.99 USD) -->
         <div class="plan-card">
             <div class="plan-title">PLAN 1 MWA (30 JOU)</div>
-            <div class="price">$199.99 USD</div>
+            <div class="price">$233.99 USD</div>
             <p style="font-size: 13px; color: #666;">Aksè ak Kòd 8 chif pou 30 jou otomatik</p>
-            <div class="ltc-box">{{ ltc_address }}</div>
-            <button class="btn-copy" onclick="copyAddress()">KOPYE ADRÈS LTC</button>
+            <div class="ltc-box" id="ltc-addr-3">{{ ltc_address }}</div>
+            <button class="btn-copy" onclick="copyAddress('ltc-addr-3')">KOPYE ADRÈS LTC</button>
         </div>
 
         <!-- Rantre Kòd Aksè -->
@@ -136,9 +144,13 @@ HTML_PLANS = """
     </div>
 
     <script>
-        function copyAddress() {
-            navigator.clipboard.writeText("{{ ltc_address }}");
-            alert("Adrès LTC an kopye ak siksè!");
+        function copyAddress(elementId) {
+            const text = document.getElementById(elementId).innerText.trim();
+            navigator.clipboard.writeText(text).then(() => {
+                alert("Adrès LTC an kopye ak siksè san okenn erè fòma!");
+            }).catch(err => {
+                console.error('Erè kopye: ', err);
+            });
         }
     </script>
 </body>
@@ -272,12 +284,12 @@ HTML_ADMIN = """
     <title>Panel Administratè - Option Full Live</title>
     <style>
         body { background-color: #f4f4f4; color: #111; font-family: Arial, sans-serif; padding: 20px; }
-        .admin-card { background: white; padding: 20px; border-radius: 8px; border: 2px solid #e60000; max-width: 700px; margin: 0 auto; }
+        .admin-card { background: white; padding: 20px; border-radius: 8px; border: 2px solid #e60000; max-width: 850px; margin: 0 auto; }
         h2 { color: #e60000; }
         .btn-gen { background: #e60000; color: white; border: none; padding: 10px 15px; margin: 5px; font-weight: bold; border-radius: 5px; cursor: pointer; }
         .btn-gen:hover { background: #cc0000; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 14px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 13px; }
         th { background-color: #e60000; color: white; }
         .code-display { font-size: 20px; font-weight: bold; color: green; margin: 15px 0; background: #eafaf1; padding: 10px; border-radius: 5px; }
     </style>
@@ -299,14 +311,15 @@ HTML_ADMIN = """
             </div>
         {% endif %}
 
-        <h3>LIS TOUT KÒD YO NAN SISTÈM NAN:</h3>
+        <h3>LIS TOUT KÒD YO AK KONTWÒL EKSPIRASYON:</h3>
         <table>
             <tr>
                 <th>Kòd Aksè</th>
                 <th>Plan (Jou)</th>
-                <th>Statit</th>
+                <th>Estati</th>
                 <th>Imèl Itilizatè</th>
-                <th>Dat Ekspirasyon</th>
+                <th>Dat Aktivasyon</th>
+                <th>Dat Ekspirasyon Egzat</th>
             </tr>
             {% for c in codes %}
             <tr>
@@ -314,7 +327,8 @@ HTML_ADMIN = """
                 <td>{{ c[1] }} Jou</td>
                 <td>{{ c[2] }}</td>
                 <td>{{ c[3] if c[3] else '-' }}</td>
-                <td>{{ c[5] if c[5] else 'Poko Aktivé' }}</td>
+                <td>{{ c[4] if c[4] else 'Poko Aktive' }}</td>
+                <td>{{ c[5] if c[5] else 'Poko Aktive' }}</td>
             </tr>
             {% endfor %}
         </table>
@@ -346,19 +360,19 @@ def verify_code():
     code_entered = request.form.get('access_code', '').strip()
     email = session.get('user_email', 'unknown@user.com')
     
-    conn = sqlite3.connect('database.db')
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT code, days, status, expiration_date FROM access_codes WHERE code = ?", (code_entered,))
+    c.execute("SELECT code, days, status, expiration_date FROM access_codes WHERE code = %s", (code_entered,))
     row = c.fetchone()
     
     if not row:
+        c.close()
         conn.close()
         return redirect(url_for('plans', error="Kòd sa a pa egziste nan sistèm nan!"))
         
     code, days, status, expiration_date = row
     now = datetime.now()
     
-    # Si se premye fwa kliyan an ap itilize kòd la (unused)
     if status == 'unused':
         new_expiration = now + timedelta(days=int(days))
         now_str = now.strftime('%Y-%m-%d %H:%M:%S')
@@ -366,30 +380,33 @@ def verify_code():
         
         c.execute("""
             UPDATE access_codes 
-            SET status = 'active', used_by_email = ?, activation_date = ?, expiration_date = ? 
-            WHERE code = ?
+            SET status = 'active', used_by_email = %s, activation_date = %s, expiration_date = %s 
+            WHERE code = %s
         """, (email, now_str, exp_str, code_entered))
         conn.commit()
+        c.close()
+        conn.close()
         
         session['access_code'] = code_entered
-        conn.close()
         return redirect(url_for('signals'))
         
-    # Si kòd la te deja aktive, tcheke si jou yo poko pase
     if status == 'active' and expiration_date:
         exp_date = datetime.strptime(expiration_date, '%Y-%m-%d %H:%M:%S')
         if now <= exp_date:
-            session['access_code'] = code_entered
+            c.close()
             conn.close()
+            session['access_code'] = code_entered
             return redirect(url_for('signals'))
         else:
-            c.execute("UPDATE access_codes SET status = 'expired' WHERE code = ?", (code_entered,))
+            c.execute("UPDATE access_codes SET status = 'expired' WHERE code = %s", (code_entered,))
             conn.commit()
+            c.close()
             conn.close()
             return redirect(url_for('plans', error="Kòd aksè sa a ekspire! Tan an fini."))
             
+    c.close()
     conn.close()
-    return redirect(url_for('plans', error="Kòd sa a pa ka itilize ankò."))
+    return redirect(url_for('plans', error="Kòd sa a deja ekspire epi li pa ka itilize ankò."))
 
 @app.route('/signals')
 def signals():
@@ -397,10 +414,11 @@ def signals():
         return redirect(url_for('plans'))
     
     code = session['access_code']
-    conn = sqlite3.connect('database.db')
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT expiration_date FROM access_codes WHERE code = ?", (code,))
+    c.execute("SELECT expiration_date FROM access_codes WHERE code = %s", (code,))
     row = c.fetchone()
+    c.close()
     conn.close()
 
     if row and row[0]:
@@ -417,10 +435,11 @@ def admin():
     if admin_pass != ADMIN_CODE:
         return "Aksè Refize! Tanpri antre kòd admin la kòrèkteman nan adrès la (Egzanp: /admin?code=ADMIN2026)"
         
-    conn = sqlite3.connect('database.db')
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT code, days, status, used_by_email, activation_date, expiration_date FROM access_codes ORDER BY ROWID DESC")
+    c.execute("SELECT code, days, status, used_by_email, activation_date, expiration_date FROM access_codes ORDER BY ctid DESC")
     codes = c.fetchall()
+    c.close()
     conn.close()
     return render_template_string(HTML_ADMIN, codes=codes, new_code=None, plan_days=None)
 
@@ -439,13 +458,14 @@ def admin_generate():
     else:
         new_code = generate_random_code(8)
 
-    conn = sqlite3.connect('database.db')
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute("INSERT INTO access_codes (code, days, status) VALUES (?, ?, 'unused')", (new_code, plan_days))
+    c.execute("INSERT INTO access_codes (code, days, status) VALUES (%s, %s, 'unused')", (new_code, plan_days))
     conn.commit()
     
-    c.execute("SELECT code, days, status, used_by_email, activation_date, expiration_date FROM access_codes ORDER BY ROWID DESC")
+    c.execute("SELECT code, days, status, used_by_email, activation_date, expiration_date FROM access_codes ORDER BY ctid DESC")
     codes = c.fetchall()
+    c.close()
     conn.close()
 
     return render_template_string(HTML_ADMIN, codes=codes, new_code=new_code, plan_days=plan_days)
