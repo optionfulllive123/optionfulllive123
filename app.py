@@ -9,7 +9,7 @@ app = Flask(__name__)
 app.secret_key = "option_full_live_secret_key_2026"
 
 ADMIN_CODE = "ADMIN2026"
-LTC_ADDRESS = "ltc1qnn4la7cyv5xp7vqgsr4q8kqyjmc8gmekxu3s4z"
+LTC_ADDRESS = "LTC1QNN4LA7CYV5XP7VQGSR4Q8KQYJMC8GMEKXU3S4Z"
 
 # Pran lyen baz done a nan Render Environment Variables
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -115,7 +115,7 @@ HTML_PLANS = """
         <!-- Plan 15 Jou -->
         <div class="plan-card">
             <div class="plan-title">PLAN 15 JOU</div>
-            <div class="price">$119.99 USD</div>
+            <div class="price">$119.00 USD</div>
             <p style="font-size: 13px; color: #666;">Aksè ak Kòd 7 chif pou 15 jou otomatik</p>
             <div class="ltc-box" id="ltc-addr-2">{{ ltc_address }}</div>
             <button class="btn-copy" onclick="copyAddress('ltc-addr-2')">KOPYE ADRÈS LTC</button>
