@@ -87,6 +87,8 @@ HTML_PLANS = """
     <style>
         body { background-color: #f9f9f9; color: #111; font-family: Arial, sans-serif; padding: 20px; text-align: center; }
         .container { max-width: 500px; margin: 0 auto; }
+        .contact-banner { background: #ffe6e6; border: 2px dashed #e60000; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .contact-number { font-size: 24px; font-weight: bold; color: #e60000; margin-top: 5px; }
         .plan-card { background: #fff; border: 2px solid #e60000; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
         .plan-title { color: #e60000; font-size: 22px; font-weight: bold; }
         .price { font-size: 20px; margin: 10px 0; color: #333; }
@@ -101,6 +103,13 @@ HTML_PLANS = """
 <body>
     <div class="container">
         <h1 style="color: #e60000;">PLAN D'ABONMAN</h1>
+        
+        <!-- Nimewo Kontak An Gwo Chif -->
+        <div class="contact-banner">
+            <p style="margin: 0; font-weight: bold; color: #333;">Lè w fin peye plan an, kontakte nimewo sa a pou nou voye kòd ou a ba ou:</p>
+            <div class="contact-number">829-208-8760</div>
+        </div>
+
         <p>Voye peman an sou adrès LTC ki anba a pou chwazi plan ou vle a:</p>
 
         <!-- Plan 7 Jou -->
@@ -121,7 +130,7 @@ HTML_PLANS = """
             <button class="btn-copy" onclick="copyAddress('ltc-addr-2')">KOPYE ADRÈS LTC</button>
         </div>
 
-        <!-- Plan 30 Jou ($233.99 USD) -->
+        <!-- Plan 30 Jou -->
         <div class="plan-card">
             <div class="plan-title">PLAN 1 MWA (30 JOU)</div>
             <div class="price">$233.99 USD</div>
@@ -147,7 +156,7 @@ HTML_PLANS = """
         function copyAddress(elementId) {
             const text = document.getElementById(elementId).innerText.trim();
             navigator.clipboard.writeText(text).then(() => {
-                alert("Adrès LTC an kopye ak siksè san okenn erè fòma!");
+                alert("Adrès LTC an kopye an lèt majiskil ak siksè!");
             }).catch(err => {
                 console.error('Erè kopye: ', err);
             });
@@ -353,7 +362,7 @@ def login():
 def plans():
     if 'user_email' not in session:
         return redirect(url_for('login'))
-    return render_template_string(HTML_PLANS, ltc_address=LTC_ADDRESS, error=request.args.get('error'))
+    return render_template_string(HTML_PLANS, ltc_address=LTC_ADDRESS.upper(), error=request.args.get('error'))
 
 @app.route('/verify-code', methods=['POST'])
 def verify_code():
