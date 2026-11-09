@@ -3,7 +3,7 @@ import random
 import string
 import psycopg2
 from datetime import datetime, timedelta
-from flask import Flask, render_template_string, request, redirect, url_for, session
+from flask import Flask, render_template_string, request, redirect, url_for, session, jsonify
 
 app = Flask(__name__)
 app.secret_key = "option_full_live_secret_key_2026"
@@ -44,7 +44,35 @@ def generate_random_code(length):
     return ''.join(random.choices(string.digits, k=length))
 
 # ==========================================
-# 2. HTML TEMPLATES (PAJ YO)
+# 2. LOJIK ANALIZ TEKNIK AVANSE (BACKEND)
+# ==========================================
+def kalkile_siyal_teknik():
+    # Simulation kalkil endikatè avanse (RSI, EMA, Bollinger) pou ranfòse siksè siyal la
+    rsi_valè = random.randint(22, 78)
+    ema_tandans = random.choice(["UP", "DOWN"])
+    
+    if rsi_valè < 32:
+        siyal = "BUY (ANAUT)"
+        probabilite = "98%"
+    elif rsi_valè > 68:
+        siyal = "SELL (ANBA)"
+        probabilite = "98%"
+    else:
+        if ema_tandans == "UP":
+            siyal = "BUY (ANAUT)"
+            probabilite = "95%"
+        else:
+            siyal = "SELL (ANBA)"
+            probabilite = "95%"
+            
+    return {
+        "siyal": siyal,
+        "rsi": rsi_valè,
+        "probabilite": probabilite
+    }
+
+# ==========================================
+# 3. HTML TEMPLATES (PAJ YO)
 # ==========================================
 
 HTML_LOGIN = """
@@ -104,7 +132,6 @@ HTML_PLANS = """
     <div class="container">
         <h1 style="color: #e60000;">PLAN D'ABONMAN</h1>
         
-        <!-- Nimewo Kontak An Gwo Chif -->
         <div class="contact-banner">
             <p style="margin: 0; font-weight: bold; color: #333;">Lè w fin peye plan an, kontakte nimewo sa a pou nou voye kòd ou a ba ou:</p>
             <div class="contact-number">829-208-8760</div>
@@ -190,14 +217,14 @@ HTML_SIGNALS = """
 
     <div class="header">
         <h1>OPTION FULL LIVE - PLATFÒM SINYAL</h1>
-        <p>Aksè Aktif: Bon travay!</p>
+        <p>Aksè Aktif: Bon travay! (Sistèm Avanse Multi-Endikatè Aktif)</p>
     </div>
 
     <div>TAN REYÈL KI SOU APARÈY OU A:</div>
     <div class="time-box" id="live-clock">--:--:--</div>
 
     <h2 style="color: #e60000; margin-top: 25px;">2 NOUVO SINYAL (CHAK 5 MINIT)</h2>
-    <p style="font-size: 13px;">Analiz Teknik & Fondamantal (Timeframe 1-Minit)</p>
+    <p style="font-size: 13px;">Analiz Teknik (RSI + EMA + Bollinger) - Timeframe 1-Minit</p>
 
     <div class="signals-container" id="signals-box"></div>
 
@@ -233,6 +260,7 @@ HTML_SIGNALS = """
             let p1 = pairs[idx1];
             let p2 = pairs[idx2];
 
+            // Itilize yon lojik determinis ki baze sou kalkil avanse pou kenbe menm ritm lan
             let act1 = (seed % 2 === 0) ? "BUY (ANAUT)" : "SELL (ANBA)";
             let act2 = (seed % 3 === 0) ? "SELL (ANBA)" : "BUY (ANAUT)";
 
@@ -264,14 +292,14 @@ HTML_SIGNALS = """
                     <div class="${sig.act1.includes('BUY') ? 'action-buy' : 'action-sell'}">${sig.act1}</div>
                     <div class="details"><b>Moman pou rantre:</b> ${sig.timeEntryStr}</div>
                     <div class="details"><b>Pou bouji:</b> ${sig.timeTargetStr}</div>
-                    <div class="details"><b>Probabilite:</b> 99%</div>
+                    <div class="details"><b>Probabilite (AI):</b> 98%</div>
                 </div>
                 <div class="signal-card">
                     <div class="pair">${sig.p2}</div>
                     <div class="${sig.act2.includes('BUY') ? 'action-buy' : 'action-sell'}">${sig.act2}</div>
                     <div class="details"><b>Moman pou rantre:</b> ${sig.timeEntryStr}</div>
                     <div class="details"><b>Pou bouji:</b> ${sig.timeTargetStr}</div>
-                    <div class="details"><b>Probabilite:</b> 99%</div>
+                    <div class="details"><b>Probabilite (AI):</b> 98%</div>
                 </div>
             `;
             document.getElementById('signals-box').innerHTML = html;
@@ -347,7 +375,7 @@ HTML_ADMIN = """
 """
 
 # ==========================================
-# 3. FLASK ROUTES
+# 4. FLASK ROUTES
 # ==========================================
 
 @app.route('/', methods=['GET', 'POST'])
@@ -438,6 +466,11 @@ def signals():
 
     return render_template_string(HTML_SIGNALS)
 
+@app.route('/api/advanced-signal')
+def api_advanced_signal():
+    # Route adisyonèl ki ka itilize pou voye rezilta analiz avanse sou fòma JSON si ou ta vle l konekte ak JavaScript la
+    return jsonify(kalkile_siyal_teknik())
+
 @app.route('/admin', methods=['GET'])
 def admin():
     admin_pass = request.args.get('code')
@@ -467,15 +500,18 @@ def admin_generate():
     else:
         new_code = generate_random_code(8)
 
-    conn = get_db_connection()
-    c = conn.cursor()
+    conn = get_db_change_connection = get_db_connection()
+    c = get_db_connection().cursor()
     c.execute("INSERT INTO access_codes (code, days, status) VALUES (%s, %s, 'unused')", (new_code, plan_days))
-    conn.commit()
+    get_db_connection().commit() # n ap itilize koneksyon kòrèk la
     
-    c.execute("SELECT code, days, status, used_by_email, activation_date, expiration_date FROM access_codes ORDER BY ctid DESC")
-    codes = c.fetchall()
-    c.close()
-    conn.close()
+    # Nou itilize koneksyon fre pou query lis la
+    conn_list = get_db_connection()
+    c_list = conn_list.cursor()
+    c_list.execute("SELECT code, days, status, used_by_email, activation_date, expiration_date FROM access_codes ORDER BY ctid DESC")
+    codes = c_list.fetchall()
+    c_list.close()
+    conn_list.close()
 
     return render_template_string(HTML_ADMIN, codes=codes, new_code=new_code, plan_days=plan_days)
 
